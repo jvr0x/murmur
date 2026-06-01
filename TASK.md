@@ -32,9 +32,17 @@
 ### M4 — Polish (partial, 2026-06-01)
 - [x] Recording HUD (borderless NSPanel) + menu-bar status glyphs.
 
-### Setup / verification
-- [x] Brainstorm + design spec approved (2026-06-01).
-- [x] Compiles via `swiftc` (lib + executable); 19 logic checks pass.
+### Setup / verification (2026-06-01)
+- [x] Brainstorm + design spec approved.
+- [x] Compiles via `swiftc` (lib + executable); 19 core-logic checks pass.
+- [x] `Murmur.app` bundles and launches into the NSApp run loop (no startup crash).
+- [x] `build-whisper.sh` builds a working Metal whisper-server.
+- [x] End-to-end STT round-trip: real `WhisperCppBackend` -> whisper.cpp server ->
+      correct transcription of synthesized speech.
+- [x] `ServerSupervisor` auto-launches the bundled whisper-server on app start.
+- [x] `setup.sh` one-command local setup.
+- [ ] Not testable headless (need interactive session + TCC + hardware): mic capture,
+      text insertion, global hotkey, live Ollama cleanup.
 
 ## Discovered During Work
 - The Command Line Tools toolchain in the dev sandbox is broken two ways: a
