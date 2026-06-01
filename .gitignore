@@ -1,0 +1,21 @@
+# Swift / SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+*.xcuserstate
+
+# macOS
+.DS_Store
+
+# Murmur build artifacts — bundled binary + model are fetched, not committed
+Resources/whisper-server
+Resources/*.bin
+vendor/whisper.cpp/
+
+# Logs / scratch
+*.log
