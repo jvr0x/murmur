@@ -12,6 +12,9 @@ DerivedData/
 # macOS
 .DS_Store
 
+# Built app bundle
+*.app/
+
 # Murmur build artifacts — bundled binary + model are fetched, not committed
 Resources/whisper-server
 Resources/*.bin

@@ -27,27 +27,37 @@ Early development. See [`PLANNING.md`](PLANNING.md) and
 
 ## Requirements
 
-- Apple Silicon Mac (developed on M2 Pro, 32 GB).
+- Apple Silicon Mac, **macOS 14+** (developed targeting an M2 Pro, 32 GB).
+- A Swift toolchain (full Xcode, or Command Line Tools — see build note below).
 - macOS permissions: Microphone, Accessibility, Input Monitoring.
 - [Ollama](https://ollama.com) installed if you want the LLM cleanup pass.
 
 ## Setup
 
 ```sh
-# 1. Build the bundled whisper.cpp server and fetch the model
-./Scripts/build-whisper.sh
-./Scripts/fetch-model.sh
+# 1. Build the bundled whisper.cpp server and fetch the model (one-time)
+./Scripts/build-whisper.sh      # needs cmake: brew install cmake
+./Scripts/fetch-model.sh        # downloads ggml-large-v3-turbo-q5_0 (~547 MB)
 
-# 2. (optional) LLM cleanup
+# 2. (optional) LLM cleanup backend
 ollama pull qwen2.5:7b
 
-# 3. Build & run Murmur
-swift build
-swift run Murmur
+# 3. Build the app bundle and launch
+./Scripts/run.sh                # builds Murmur.app and opens it
 ```
 
-Grant the three permissions when prompted (or in System Settings → Privacy & Security),
-then hold Right Option and talk.
+`Scripts/make-app.sh` produces a real `Murmur.app` with an `Info.plist` (so macOS will
+grant the microphone permission — a bare `swift run` binary cannot request it). Grant the
+three permissions when prompted (or in System Settings → Privacy & Security), then hold
+**Right Option** and talk.
+
+### Build note
+
+The standard build is SwiftPM (`swift build`), used automatically by `make-app.sh`. If
+your Command Line Tools install is affected by the known duplicate-`SwiftBridging`
+modulemap bug (every Foundation import fails to compile), `Scripts/build-swiftc.sh`
+builds without SwiftPM and auto-applies a VFS-overlay workaround — no system files are
+modified. `make-app.sh` falls back to it automatically.
 
 ## Configuration
 
