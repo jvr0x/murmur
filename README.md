@@ -35,9 +35,9 @@ Early development. See [`PLANNING.md`](PLANNING.md) and
 ## Setup
 
 ```sh
-# 1. Build the bundled whisper.cpp server and fetch the model (one-time)
-./Scripts/build-whisper.sh      # needs cmake: brew install cmake
-./Scripts/fetch-model.sh        # downloads ggml-large-v3-turbo-q5_0 (~547 MB)
+# 1. One-time: build the whisper.cpp server + download the model
+#    (installs cmake via Homebrew if missing; model is ~547 MB)
+./Scripts/setup.sh
 
 # 2. (optional) LLM cleanup backend
 ollama pull qwen2.5:7b
@@ -45,6 +45,9 @@ ollama pull qwen2.5:7b
 # 3. Build the app bundle and launch
 ./Scripts/run.sh                # builds Murmur.app and opens it
 ```
+
+The individual steps (`build-whisper.sh`, `fetch-model.sh`) can also be run directly;
+`fetch-model.sh` accepts `MODEL_FILE`/`MODEL_URL` overrides to use a different model.
 
 `Scripts/make-app.sh` produces a real `Murmur.app` with an `Info.plist` (so macOS will
 grant the microphone permission — a bare `swift run` binary cannot request it). Grant the
