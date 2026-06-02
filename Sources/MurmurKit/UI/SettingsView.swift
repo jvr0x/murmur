@@ -40,11 +40,31 @@ public struct SettingsView: View {
     @ViewBuilder private var cleanupSection: some View {
         Section("LLM Cleanup") {
             Toggle("Enable cleanup pass", isOn: $settings.config.cleanupEnabled)
+            Picker("Provider", selection: llmProviderBinding) {
+                ForEach(LLMProvider.allCases) { provider in
+                    Text(provider.displayName).tag(provider)
+                }
+            }
             TextField("LLM Base URL", text: $settings.config.llmBaseURL)
             TextField("Model", text: $settings.config.llmModel)
             TextField("Timeout (seconds)", value: $settings.config.cleanupTimeout, format: .number)
             cleanupPromptEditor
         }
+    }
+
+    /// A binding for the provider picker.
+    ///
+    /// The selection is derived from the current base URL; choosing a known provider
+    /// prefills its URL, while "Custom" leaves the field for manual editing.
+    private var llmProviderBinding: Binding<LLMProvider> {
+        Binding(
+            get: { LLMProvider.detect(from: settings.config.llmBaseURL) },
+            set: { provider in
+                if let url = provider.defaultBaseURL {
+                    settings.config.llmBaseURL = url
+                }
+            }
+        )
     }
 
     /// The editable cleanup prompt.

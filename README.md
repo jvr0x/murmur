@@ -68,6 +68,11 @@ Settings (menu-bar icon → Settings) let you change the hotkey, STT/LLM endpoin
 and the cleanup prompt. To use a remote server, set the STT backend to
 "OpenAI-compatible" with the server URL and/or point the LLM base URL at the remote host.
 
+The LLM Cleanup section has a **Provider** picker that prefills the base URL for **Ollama**
+(`http://localhost:11434/v1`) or **LM Studio** (`http://localhost:1234/v1`); choose
+**Custom** to point anywhere else (e.g. a model server on your Spark). The URL stays the
+source of truth, so editing it just flips the picker to the matching provider.
+
 ## License
 
 TBD.
