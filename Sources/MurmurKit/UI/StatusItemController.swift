@@ -97,8 +97,14 @@ public final class StatusItemController: NSObject {
         present(settingsWindow)
     }
 
-    /// Opens (creating if needed) the permissions window.
+    /// Opens (creating if needed) the permissions window. Menu action wrapper.
     @objc private func openOnboarding() {
+        presentOnboarding()
+    }
+
+    /// Shows the permissions/onboarding window (also called on first launch when a
+    /// required permission is missing).
+    public func presentOnboarding() {
         if onboardingWindow == nil {
             let window = NSWindow(contentViewController: NSHostingController(rootView: OnboardingView()))
             window.title = "Murmur Permissions"

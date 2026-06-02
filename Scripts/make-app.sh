@@ -49,4 +49,11 @@ else
   echo "    (no model yet — run Scripts/fetch-model.sh for local mode)"
 fi
 
+echo "==> Ad-hoc code-signing (helps macOS keep TCC permissions across rebuilds)"
+if codesign --force --sign - "$APP" 2>/dev/null; then
+  echo "    signed (ad-hoc)"
+else
+  echo "    codesign unavailable; continuing unsigned"
+fi
+
 echo "==> Built $APP"

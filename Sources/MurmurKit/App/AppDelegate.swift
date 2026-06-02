@@ -44,6 +44,19 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
         startServerIfNeeded()
         installHotkey(controller: controller)
+        requestPermissionsIfNeeded()
+    }
+
+    /// Requests the required permissions on launch, and opens the onboarding window if the
+    /// hotkey/insertion permissions are missing (so the user isn't left with a silent app).
+    private func requestPermissionsIfNeeded() {
+        Task { _ = await Permissions.requestMicrophone() }
+        if !Permissions.hasInputMonitoring { Permissions.requestInputMonitoring() }
+        if !Permissions.hasAccessibility { Permissions.promptAccessibility() }
+        if !Permissions.hasInputMonitoring || !Permissions.hasAccessibility {
+            Log.app.info("required permissions missing; showing onboarding")
+            statusItem?.presentOnboarding()
+        }
     }
 
     /// Stops background processes on quit.

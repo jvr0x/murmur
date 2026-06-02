@@ -4,9 +4,10 @@ import CoreGraphics
 /// Global hold-to-talk hotkey driven by a `CGEventTap`.
 ///
 /// Fires `onPress` when the configured key goes down and `onRelease` when it comes up.
-/// Modifier-only keys (e.g. Right Option, key code 61) are detected via `flagsChanged`
-/// using device-dependent flag bits; ordinary keys use `keyDown`/`keyUp`. The tap is
-/// listen-only, so it never swallows the key from other apps.
+/// Modifier keys (Option, Command, Shift, Control) are detected via their high-level
+/// `CGEventFlags` on `flagsChanged` events — which `CGEvent.flags` always reports — so a
+/// modifier hotkey responds to **either** the left or right key. Ordinary keys use
+/// `keyDown`/`keyUp`. The tap is listen-only, so it never swallows the key from other apps.
 @MainActor
 public final class HotkeyManager {
     /// Called when the hotkey is pressed.
@@ -22,11 +23,11 @@ public final class HotkeyManager {
     private var eventTap: CFMachPort?
     /// The run-loop source for the tap.
     private var runLoopSource: CFRunLoopSource?
-    /// Tracks the current down/up state to debounce auto-repeat and double flag events.
+    /// Tracks the current down/up state to debounce auto-repeat and duplicate flag events.
     private var isDown = false
 
     /// Creates a manager for the given key code.
-    /// - Parameter keyCode: The virtual key code (default Right Option is 61).
+    /// - Parameter keyCode: The virtual key code (default Right Option is 61; any Option works).
     public init(keyCode: UInt16) {
         self.keyCode = CGKeyCode(keyCode)
     }
@@ -80,14 +81,21 @@ public final class HotkeyManager {
     ///   - type: The event type.
     ///   - event: The event.
     nonisolated private func handle(type: CGEventType, event: CGEvent) {
-        let kc = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-        guard kc == keyCode else { return }
+        // The system disables a tap that is slow or interrupted; re-enable it.
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            DispatchQueue.main.async { [weak self] in self?.reenable() }
+            return
+        }
 
         let down: Bool
-        if let bit = HotkeyManager.deviceFlagBit(for: keyCode) {
+        if HotkeyManager.modifierMask(for: keyCode) != nil {
+            // Modifier hotkey: track the high-level flag (responds to either left/right key).
             guard type == .flagsChanged else { return }
-            down = (event.flags.rawValue & bit) != 0
+            down = HotkeyManager.modifierActive(forKeyCode: keyCode, flags: event.flags) ?? false
         } else {
+            // Ordinary key: match the key code on key down/up.
+            let kc = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+            guard kc == keyCode else { return }
             switch type {
             case .keyDown: down = true
             case .keyUp: down = false
@@ -97,28 +105,45 @@ public final class HotkeyManager {
         DispatchQueue.main.async { [weak self] in self?.setDown(down) }
     }
 
+    /// Re-enables the tap after the system disabled it.
+    private func reenable() {
+        guard let tap = eventTap else { return }
+        CGEvent.tapEnable(tap: tap, enable: true)
+        Log.hotkey.debug("event tap re-enabled")
+    }
+
     /// Applies a debounced down/up transition and fires the callbacks.
     /// - Parameter down: Whether the key is now down.
     private func setDown(_ down: Bool) {
         guard down != isDown else { return }
         isDown = down
+        Log.hotkey.debug("hotkey \(down ? "pressed" : "released")")
         if down { onPress?() } else { onRelease?() }
     }
 
-    /// Maps a modifier key code to its device-dependent flag bit, if it is a modifier.
+    /// Maps a modifier key code to its high-level `CGEventFlags` mask, if it is a modifier.
+    ///
+    /// Both the left and right key of each pair map to the same mask, so a modifier hotkey
+    /// responds to either side.
     /// - Parameter keyCode: The virtual key code.
-    /// - Returns: The raw flag bit set while that modifier is held, or `nil` for ordinary keys.
-    nonisolated static func deviceFlagBit(for keyCode: CGKeyCode) -> UInt64? {
+    /// - Returns: The flag mask set while that modifier is held, or `nil` for ordinary keys.
+    nonisolated static func modifierMask(for keyCode: CGKeyCode) -> CGEventFlags? {
         switch keyCode {
-        case 59: return 0x0000_0001 // left control
-        case 56: return 0x0000_0002 // left shift
-        case 60: return 0x0000_0004 // right shift
-        case 55: return 0x0000_0008 // left command
-        case 54: return 0x0000_0010 // right command
-        case 58: return 0x0000_0020 // left option
-        case 61: return 0x0000_0040 // right option
-        case 62: return 0x0000_2000 // right control
+        case 55, 54: return .maskCommand   // left / right command
+        case 56, 60: return .maskShift     // left / right shift
+        case 58, 61: return .maskAlternate // left / right option
+        case 59, 62: return .maskControl   // left / right control
         default: return nil
         }
+    }
+
+    /// Reports whether a modifier key code's modifier is active in the given flags.
+    /// - Parameters:
+    ///   - keyCode: The virtual key code.
+    ///   - flags: The event flags from a `flagsChanged` event.
+    /// - Returns: `true`/`false` for a modifier key, or `nil` if `keyCode` is not a modifier.
+    nonisolated static func modifierActive(forKeyCode keyCode: CGKeyCode, flags: CGEventFlags) -> Bool? {
+        guard let mask = modifierMask(for: keyCode) else { return nil }
+        return flags.contains(mask)
     }
 }

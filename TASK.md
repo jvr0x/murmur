@@ -44,6 +44,14 @@
 - [ ] Not testable headless (need interactive session + TCC + hardware): mic capture,
       text insertion, global hotkey, live Ollama cleanup.
 
+## Fixes
+- **Hotkey never fired (icon never changed)** — modifier detection relied on device-
+  dependent flag bits (`0x40`) that `CGEvent.flags` doesn't reliably expose, so `onPress`
+  never triggered. Now detects via the high-level `.maskAlternate` flag (reliable), which
+  also makes **either** Option key work. Regression covered by `HotkeyDetectionTests`.
+  Also: auto-request permissions + show onboarding on first launch; ad-hoc code-sign the
+  bundle so TCC grants survive rebuilds; re-enable the tap if macOS disables it.
+
 ## Discovered During Work
 - The Command Line Tools toolchain in the dev sandbox is broken two ways: a
   `PackageDescription` dylib/interface mismatch (breaks `swift build`) and a duplicate
