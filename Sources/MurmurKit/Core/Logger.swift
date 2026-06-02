@@ -3,10 +3,10 @@ import os
 /// Centralized `os.Logger` instances, grouped by subsystem category.
 ///
 /// Using a single subsystem identifier keeps all Murmur logs filterable in
-/// Console.app with `subsystem:com.arqitech.murmur`.
+/// Console.app with `subsystem:io.github.jvr0x.murmur`.
 public enum Log {
     /// The unified-logging subsystem identifier for the app.
-    public static let subsystem = "com.arqitech.murmur"
+    public static let subsystem = "io.github.jvr0x.murmur"
 
     /// General app lifecycle and coordination logs.
     public static let app = Logger(subsystem: subsystem, category: "app")
