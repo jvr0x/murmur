@@ -6,6 +6,8 @@ import SwiftUI
 public final class StatusItemController: NSObject {
     /// The menu-bar status item.
     private var statusItem: NSStatusItem?
+    /// The disabled header item; its title tracks the configured hotkey.
+    private var headerItem: NSMenuItem?
     /// Settings backing the settings window.
     private let settings: SettingsStore
     /// The floating status HUD.
@@ -28,8 +30,14 @@ public final class StatusItemController: NSObject {
         item.button?.title = Self.idleGlyph
 
         let menu = NSMenu()
-        let header = NSMenuItem(title: "Murmur — hold Right Option to talk", action: nil, keyEquivalent: "")
+        menu.delegate = self
+        let header = NSMenuItem(
+            title: Self.menuHeaderTitle(for: settings.config.hotkeyKeyCode),
+            action: nil,
+            keyEquivalent: ""
+        )
         header.isEnabled = false
+        headerItem = header
         menu.addItem(header)
         menu.addItem(.separator())
         menu.addItem(menuItem("Settings…", #selector(openSettings), ","))
@@ -75,6 +83,13 @@ public final class StatusItemController: NSObject {
 
     /// The idle menu-bar glyph.
     private static let idleGlyph = "🎙️"
+
+    /// Builds the disabled menu header naming the configured hold-to-talk key.
+    /// - Parameter keyCode: The configured hotkey's virtual key code.
+    /// - Returns: A header like `"Murmur — hold Right Option ⌥ to talk"`.
+    nonisolated static func menuHeaderTitle(for keyCode: UInt16) -> String {
+        "Murmur — hold \(KeyName.display(for: keyCode)) to talk"
+    }
 
     /// Builds a target-bound menu item.
     private func menuItem(_ title: String, _ action: Selector, _ key: String) -> NSMenuItem {
@@ -126,5 +141,17 @@ public final class StatusItemController: NSObject {
     /// Terminates the app.
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+}
+
+extension StatusItemController: NSMenuDelegate {
+    /// Refreshes the header to the currently configured hotkey just before the menu opens.
+    ///
+    /// The hotkey can change at runtime (Settings applies it live), so the title is derived
+    /// here rather than only at install time — keeping the menu in sync without a separate
+    /// settings subscription.
+    /// - Parameter menu: The menu about to be displayed.
+    public func menuNeedsUpdate(_ menu: NSMenu) {
+        headerItem?.title = Self.menuHeaderTitle(for: settings.config.hotkeyKeyCode)
     }
 }

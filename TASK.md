@@ -51,8 +51,24 @@
   also makes **either** Option key work. Regression covered by `HotkeyDetectionTests`.
   Also: auto-request permissions + show onboarding on first launch; ad-hoc code-sign the
   bundle so TCC grants survive rebuilds; re-enable the tap if macOS disables it.
+- **Menu header hardcoded to "Right Option" (2026-06-02)** — the menu-bar header always
+  read "Murmur — hold Right Option to talk" regardless of the configured hotkey. It now
+  derives from `KeyName.display(for:)` via `StatusItemController.menuHeaderTitle(for:)`
+  (e.g. "hold Space to talk"), and refreshes on menu open (`NSMenuDelegate.menuNeedsUpdate`)
+  so a live hotkey change is reflected. Regression covered by `MenuHeaderTests`.
+- **Hotkey leaked into the focused app (2026-06-02)** — a non-modifier hotkey (e.g. F20)
+  reached the frontmost app through the listen-only tap, so the key also triggered actions
+  there (Claude Code walked back through prompt history; earlier, a Shift+\ macro typed `|`
+  into focused fields and corrupted `sttBaseURL`). The tap is now active (`.defaultTap`) and
+  swallows the hotkey's own `keyDown`/`keyUp` via `HotkeyManager.shouldSwallow`; modifier
+  hotkeys still pass through (a modifier flag can't be discarded cleanly). The active tap
+  relies on Accessibility (already requested for text insertion). Covered by
+  `HotkeyDetectionTests`.
 
 ## Discovered During Work
+- `OnboardingView.swift:20` has the same hardcoded "hold Right Option and speak" string as
+  the menu header bug above; out of scope for the reported fix. Decide whether to derive it
+  from `KeyName.display(for: config.hotkeyKeyCode)` too.
 - The Command Line Tools toolchain in the dev sandbox is broken two ways: a
   `PackageDescription` dylib/interface mismatch (breaks `swift build`) and a duplicate
   `SwiftBridging` modulemap (breaks all Foundation imports). `Scripts/build-swiftc.sh`
