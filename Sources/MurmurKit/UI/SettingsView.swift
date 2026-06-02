@@ -81,7 +81,9 @@ public struct SettingsView: View {
     /// Hotkey and text-insertion configuration.
     @ViewBuilder private var hotkeySection: some View {
         Section("Hotkey & Insertion") {
-            TextField("Hotkey key code (61 = Right Option)", value: hotkeyBinding, format: .number)
+            LabeledContent("Hold-to-talk key") {
+                KeyRecorderView(keyCode: $settings.config.hotkeyKeyCode)
+            }
             Picker("Insertion method", selection: $settings.config.insertionMethod) {
                 Text("Paste (Cmd-V)").tag(InsertionMethod.paste)
                 Text("Keystroke").tag(InsertionMethod.keystroke)
@@ -97,14 +99,6 @@ public struct SettingsView: View {
             Text("Changing the port takes effect on next launch.")
                 .font(.caption).foregroundStyle(.secondary)
         }
-    }
-
-    /// A binding to the hotkey key code as an `Int` (the field formats integers).
-    private var hotkeyBinding: Binding<Int> {
-        Binding(
-            get: { Int(settings.config.hotkeyKeyCode) },
-            set: { settings.config.hotkeyKeyCode = UInt16(max(0, $0)) }
-        )
     }
 
     /// A binding to the whisper server port as an `Int`.

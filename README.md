@@ -73,6 +73,10 @@ The LLM Cleanup section has a **Provider** picker that prefills the base URL for
 **Custom** to point anywhere else (e.g. a model server on your Spark). The URL stays the
 source of truth, so editing it just flips the picker to the matching provider.
 
+To change the **hold-to-talk key**, click **Record** and press the key (or modifier) you
+want — either Option, fn, an F-key, etc. Esc cancels. The change applies immediately, no
+relaunch.
+
 ## License
 
 TBD.

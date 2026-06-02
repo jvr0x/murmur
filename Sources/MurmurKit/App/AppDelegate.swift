@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 /// The application delegate that owns and wires together every subsystem.
 ///
@@ -17,6 +18,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkey: HotkeyManager?
     /// Menu-bar status item and menu.
     private var statusItem: StatusItemController?
+    /// Combine subscriptions (e.g. live hotkey re-install on settings change).
+    private var cancellables = Set<AnyCancellable>()
 
     /// Creates the delegate.
     public override init() {
@@ -77,10 +80,30 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         supervisor.startBundledServer(port: settings.config.whisperServerPort)
     }
 
-    /// Wires the hold-to-talk hotkey to the dictation controller.
+    /// Wires the hold-to-talk hotkey to the dictation controller, and re-installs it live
+    /// whenever the hotkey is changed in Settings.
     /// - Parameter controller: The pipeline to start/stop on key press/release.
     private func installHotkey(controller: DictationController) {
-        let hotkey = HotkeyManager(keyCode: settings.config.hotkeyKeyCode)
+        rebuildHotkey(keyCode: settings.config.hotkeyKeyCode, controller: controller)
+        settings.$config
+            .map(\.hotkeyKeyCode)
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] keyCode in
+                guard let self, let controller = self.controller else { return }
+                Log.hotkey.info("hotkey changed in settings; re-installing for key code \(Int(keyCode))")
+                self.rebuildHotkey(keyCode: keyCode, controller: controller)
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Tears down any existing hotkey tap and installs a fresh one for `keyCode`.
+    /// - Parameters:
+    ///   - keyCode: The virtual key code to watch.
+    ///   - controller: The pipeline to start/stop on key press/release.
+    private func rebuildHotkey(keyCode: UInt16, controller: DictationController) {
+        hotkey?.stop()
+        let hotkey = HotkeyManager(keyCode: keyCode)
         hotkey.onPress = { controller.begin() }
         hotkey.onRelease = { controller.end() }
         hotkey.onTapFailure = { [weak self] in

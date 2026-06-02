@@ -129,10 +129,11 @@ public final class HotkeyManager {
     /// - Returns: The flag mask set while that modifier is held, or `nil` for ordinary keys.
     nonisolated static func modifierMask(for keyCode: CGKeyCode) -> CGEventFlags? {
         switch keyCode {
-        case 55, 54: return .maskCommand   // left / right command
-        case 56, 60: return .maskShift     // left / right shift
-        case 58, 61: return .maskAlternate // left / right option
-        case 59, 62: return .maskControl   // left / right control
+        case 55, 54: return .maskCommand     // left / right command
+        case 56, 60: return .maskShift       // left / right shift
+        case 58, 61: return .maskAlternate   // left / right option
+        case 59, 62: return .maskControl     // left / right control
+        case 63: return .maskSecondaryFn     // fn / globe
         default: return nil
         }
     }
