@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 
 /// Owns the menu-bar status item, its menu, the status HUD, and the auxiliary windows.
@@ -6,6 +7,8 @@ import SwiftUI
 public final class StatusItemController: NSObject {
     /// The menu-bar status item.
     private var statusItem: NSStatusItem?
+    /// A small colored dot overlaid on the wave glyph to signal the active state.
+    private let statusDot = CALayer()
     /// The disabled header item; its title tracks the configured hotkey.
     private var headerItem: NSMenuItem?
     /// Settings backing the settings window.
@@ -27,7 +30,15 @@ public final class StatusItemController: NSObject {
     /// Installs the status item and its menu.
     public func install() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = Self.idleGlyph
+        if let button = item.button {
+            Self.applyWaveGlyph(to: button)
+            button.wantsLayer = true
+            button.layer?.masksToBounds = false
+            statusDot.frame = CGRect(x: 0, y: 0, width: Self.dotSize, height: Self.dotSize)
+            statusDot.cornerRadius = Self.dotSize / 2
+            statusDot.isHidden = true
+            button.layer?.addSublayer(statusDot)
+        }
 
         let menu = NSMenu()
         menu.delegate = self
@@ -52,21 +63,16 @@ public final class StatusItemController: NSObject {
     /// - Parameter state: The current dictation state.
     public func update(for state: DictationState) {
         switch state {
-        case .idle:
-            statusItem?.button?.title = Self.idleGlyph
+        case .idle:        setDot(nil)
+        case .recording:   setDot(.systemRed)
+        case .transcribing: setDot(.systemBlue)
+        case .cleaning:    setDot(.systemPurple)
+        case .inserting:   setDot(.systemGreen)
+        }
+        if let label = state.hudLabel {
+            hud.show(label)
+        } else {
             hud.hide()
-        case .recording:
-            statusItem?.button?.title = "🔴"
-            hud.show("Listening…")
-        case .transcribing:
-            statusItem?.button?.title = "✍️"
-            hud.show("Transcribing…")
-        case .cleaning:
-            statusItem?.button?.title = "✨"
-            hud.show("Polishing…")
-        case .inserting:
-            statusItem?.button?.title = "⌨️"
-            hud.show("Inserting…")
         }
     }
 
@@ -74,15 +80,55 @@ public final class StatusItemController: NSObject {
     /// - Parameter error: The error to surface.
     public func showError(_ error: Error) {
         Log.app.error("\(error.localizedDescription, privacy: .public)")
-        statusItem?.button?.title = "⚠️"
+        setDot(.systemOrange)
         hud.hide()
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-            self?.statusItem?.button?.title = Self.idleGlyph
+            self?.setDot(nil)
         }
     }
 
-    /// The idle menu-bar glyph.
+    /// The idle menu-bar glyph (fallback if the bundled wave asset can't be loaded).
     private static let idleGlyph = "🎙️"
+
+    /// Diameter of the status dot, in points.
+    private static let dotSize: CGFloat = 7
+
+    /// Sets `button.image` to the monochrome wave template, sized for the menu bar.
+    ///
+    /// The image is marked as a template so macOS tints it for light/dark menu bars.
+    /// Falls back to the legacy emoji title if the bundled asset can't be loaded.
+    /// - Parameter button: The status-item button to brand.
+    private static func applyWaveGlyph(to button: NSStatusBarButton) {
+        guard let url = Bundle.main.url(forResource: "StatusWave", withExtension: "png"),
+              let image = NSImage(contentsOf: url) else {
+            button.title = idleGlyph
+            return
+        }
+        image.isTemplate = true
+        let height: CGFloat = 17
+        let aspect = image.size.height > 0 ? image.size.width / image.size.height : 2.3
+        image.size = NSSize(width: height * aspect, height: height)
+        button.image = image
+        button.imagePosition = .imageOnly
+        button.title = ""
+    }
+
+    /// Shows the status dot in `color`, or hides it when `color` is `nil` (idle).
+    /// - Parameter color: The dot color for the active state, or `nil` for none.
+    private func setDot(_ color: NSColor?) {
+        guard let color else {
+            statusDot.isHidden = true
+            return
+        }
+        if let button = statusItem?.button {
+            let s = Self.dotSize
+            statusDot.frame = CGRect(x: button.bounds.maxX - s - 1,
+                                     y: button.bounds.maxY - s - 2,
+                                     width: s, height: s)
+        }
+        statusDot.backgroundColor = color.cgColor
+        statusDot.isHidden = false
+    }
 
     /// Builds the disabled menu header naming the configured hold-to-talk key.
     /// - Parameter keyCode: The configured hotkey's virtual key code.

@@ -47,4 +47,18 @@ public enum DictationState: Equatable, Sendable {
     public func next(_ target: DictationState) -> DictationState? {
         canTransition(to: target) ? target : nil
     }
+
+    /// The status-HUD label for this state, or `nil` when no HUD should be shown.
+    ///
+    /// Drives both the floating HUD text and (in future) its animation phase, so the
+    /// wording lives in one pure, testable place rather than scattered across the UI.
+    public var hudLabel: String? {
+        switch self {
+        case .idle: return nil
+        case .recording: return "Listening…"
+        case .transcribing: return "Transcribing…"
+        case .cleaning: return "Polishing…"
+        case .inserting: return "Inserting…"
+        }
+    }
 }

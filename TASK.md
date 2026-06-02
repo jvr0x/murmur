@@ -31,6 +31,13 @@
 
 ### M4 — Polish (partial, 2026-06-01)
 - [x] Recording HUD (borderless NSPanel) + menu-bar status glyphs.
+- [x] App icon (2026-06-02): Solana-gradient soundwave→wave mark. `AppIcon.icns`
+      (16→1024 incl. @2x) in `Resources/`, `CFBundleIconFile` in `Info.plist.template`,
+      bundled by `make-app.sh`; 1024 master kept at `Resources/AppIcon.png`.
+- [x] Menu-bar wave glyph (2026-06-02): monochrome template (`StatusWave.png`, traced
+      from the app-icon wave, `isTemplate` so it adapts to light/dark) + per-state colored
+      status dot (red/blue/purple/green), replacing the emoji glyphs. `DictationState.hudLabel`
+      centralizes the status wording (tested in `DictationStateTests`).
 
 ### Setup / verification (2026-06-01)
 - [x] Brainstorm + design spec approved.

@@ -31,4 +31,17 @@ final class DictationStateTests: XCTestCase {
         XCTAssertEqual(DictationState.transcribing.next(.idle), .idle)
         XCTAssertEqual(DictationState.cleaning.next(.idle), .idle)
     }
+
+    /// Idle shows no HUD; every active state has a distinct label.
+    func testHUDLabels() {
+        XCTAssertNil(DictationState.idle.hudLabel)
+        XCTAssertEqual(DictationState.recording.hudLabel, "Listening…")
+        XCTAssertEqual(DictationState.transcribing.hudLabel, "Transcribing…")
+        XCTAssertEqual(DictationState.cleaning.hudLabel, "Polishing…")
+        XCTAssertEqual(DictationState.inserting.hudLabel, "Inserting…")
+        // Active labels are all distinct.
+        let labels = [DictationState.recording, .transcribing, .cleaning, .inserting]
+            .compactMap(\.hudLabel)
+        XCTAssertEqual(Set(labels).count, labels.count)
+    }
 }

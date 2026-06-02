@@ -35,6 +35,16 @@ cp "$BIN" "$APP/Contents/MacOS/Murmur"
 chmod +x "$APP/Contents/MacOS/Murmur"
 cp "$ROOT/Resources/Info.plist.template" "$APP/Contents/Info.plist"
 
+if [ -f "$ROOT/Resources/AppIcon.icns" ]; then
+  cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/"
+  echo "    bundled app icon"
+fi
+
+if [ -f "$ROOT/Resources/StatusWave.png" ]; then
+  cp "$ROOT/Resources/StatusWave.png" "$APP/Contents/Resources/"
+  echo "    bundled menu-bar wave glyph"
+fi
+
 if [ -f "$ROOT/Resources/whisper-server" ]; then
   cp "$ROOT/Resources/whisper-server" "$APP/Contents/Resources/"
   echo "    bundled whisper-server"
