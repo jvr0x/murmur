@@ -77,7 +77,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let supervisor = ServerSupervisor()
         self.supervisor = supervisor
-        supervisor.startBundledServer(port: settings.config.whisperServerPort)
+        supervisor.startBundledServer(
+            port: settings.config.whisperServerPort,
+            modelName: settings.config.sttModel
+        )
     }
 
     /// Wires the hold-to-talk hotkey to the dictation controller, and re-installs it live

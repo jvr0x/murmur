@@ -23,20 +23,25 @@ public final class ServerSupervisor {
     /// Logs an actionable error (and does nothing else) if the binary or model is missing,
     /// pointing the user at the setup scripts.
     ///
-    /// - Parameter port: The localhost port to bind.
-    public func startBundledServer(port: Int) {
+    /// - Parameters:
+    ///   - port: The localhost port to bind.
+    ///   - modelName: The preferred model (from settings); selects the matching bundled
+    ///     model file so e.g. "whisper-large-v3-turbo" loads the multilingual turbo model
+    ///     even when an English-only model is also bundled.
+    public func startBundledServer(port: Int, modelName: String) {
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
         let binary = resources.appendingPathComponent("whisper-server")
         guard FileManager.default.isExecutableFile(atPath: binary.path) else {
             Log.server.error("whisper-server not found at \(binary.path, privacy: .public) — run Scripts/build-whisper.sh")
             return
         }
-        guard let model = ServerSupervisor.findModel(in: resources) else {
+        guard let model = ServerSupervisor.findModel(in: resources, preferring: modelName) else {
             Log.server.error("no ggml-*.bin model in resources — run Scripts/fetch-model.sh")
             return
         }
         shouldRun = true
         restarts = 0
+        Log.server.info("loading model \(model.lastPathComponent, privacy: .public)")
         launch(binary: binary, model: model, port: port)
     }
 
@@ -48,16 +53,43 @@ public final class ServerSupervisor {
         process = nil
     }
 
-    /// Finds the first bundled `ggml-*.bin` model.
-    /// - Parameter directory: The resources directory to search.
-    /// - Returns: The model URL, or `nil` if none is present.
-    private static func findModel(in directory: URL) -> URL? {
+    /// Finds the bundled GGML model to load, preferring the configured one.
+    /// - Parameters:
+    ///   - directory: The resources directory to search.
+    ///   - modelName: The preferred model name from settings.
+    /// - Returns: The chosen model URL, or `nil` if none is present.
+    private static func findModel(in directory: URL, preferring modelName: String) -> URL? {
         let contents = (try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: nil
         )) ?? []
-        return contents.first {
-            $0.lastPathComponent.hasPrefix("ggml-") && $0.pathExtension == "bin"
+        guard let chosen = selectModel(from: contents.map(\.lastPathComponent), preferring: modelName) else {
+            return nil
         }
+        return directory.appendingPathComponent(chosen)
+    }
+
+    /// Chooses which bundled GGML model file to load.
+    ///
+    /// Preference order: (1) a file whose name matches the requested `modelName`
+    /// (e.g. "whisper-large-v3-turbo" → `ggml-large-v3-turbo-q5_0.bin`); (2) any
+    /// multilingual model over an English-only (`.en`) one; (3) any model. This keeps
+    /// non-English dictation working even when an English-only model is also bundled.
+    ///
+    /// - Parameters:
+    ///   - names: Candidate file names (not full paths).
+    ///   - modelName: The preferred model name from settings.
+    /// - Returns: The chosen file name, or `nil` if no GGML model is present.
+    static func selectModel(from names: [String], preferring modelName: String) -> String? {
+        let bins = names.filter { $0.hasPrefix("ggml-") && $0.hasSuffix(".bin") }
+        guard !bins.isEmpty else { return nil }
+        let needle = modelName.lowercased().replacingOccurrences(of: "whisper-", with: "")
+        if !needle.isEmpty, let match = bins.first(where: { $0.lowercased().contains(needle) }) {
+            return match
+        }
+        if let multilingual = bins.first(where: { !$0.lowercased().hasSuffix(".en.bin") }) {
+            return multilingual
+        }
+        return bins.first
     }
 
     /// Spawns the server process and wires logging + restart handling.
