@@ -7,7 +7,10 @@ import CoreGraphics
 /// Modifier keys (Option, Command, Shift, Control) are detected via their high-level
 /// `CGEventFlags` on `flagsChanged` events — which `CGEvent.flags` always reports — so a
 /// modifier hotkey responds to **either** the left or right key. Ordinary keys use
-/// `keyDown`/`keyUp`. The tap is listen-only, so it never swallows the key from other apps.
+/// `keyDown`/`keyUp`, and the tap **swallows** the hotkey's own key events so an
+/// ordinary-key hotkey doesn't also reach the focused app (e.g. an F-key triggering an
+/// action there). Modifier hotkeys pass through — a modifier flag can't be discarded
+/// cleanly and a bare modifier leaks no character/action.
 @MainActor
 public final class HotkeyManager {
     /// Called when the hotkey is pressed.
@@ -44,14 +47,18 @@ public final class HotkeyManager {
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .listenOnly,
+            options: .defaultTap,
             eventsOfInterest: mask,
             callback: { _, type, event, refcon in
-                if let refcon {
-                    let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
-                    manager.handle(type: type, event: event)
-                }
-                return Unmanaged.passUnretained(event)
+                guard let refcon else { return Unmanaged.passUnretained(event) }
+                let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
+                manager.handle(type: type, event: event)
+                // Swallow the hotkey's own key events so the key doesn't also reach the
+                // focused app. Modifier hotkeys and all other events pass through.
+                let eventKeyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+                return HotkeyManager.shouldSwallow(
+                    hotkeyCode: manager.keyCode, eventType: type, eventKeyCode: eventKeyCode
+                ) ? nil : Unmanaged.passUnretained(event)
             },
             userInfo: selfPtr
         ) else {
@@ -146,5 +153,27 @@ public final class HotkeyManager {
     nonisolated static func modifierActive(forKeyCode keyCode: CGKeyCode, flags: CGEventFlags) -> Bool? {
         guard let mask = modifierMask(for: keyCode) else { return nil }
         return flags.contains(mask)
+    }
+
+    /// Reports whether the event tap should swallow this event so the hotkey key does not
+    /// also reach the focused app.
+    ///
+    /// Only an **ordinary-key** hotkey is swallowed, and only on its own `keyDown`/`keyUp`.
+    /// Modifier hotkeys always pass through: a modifier flag can't be discarded cleanly, and
+    /// a bare modifier leaks no character/action to other apps. Every non-matching event
+    /// passes through untouched.
+    /// - Parameters:
+    ///   - hotkeyCode: The configured hotkey's virtual key code.
+    ///   - eventType: The tapped event's type.
+    ///   - eventKeyCode: The tapped event's key code (meaningful only for `keyDown`/`keyUp`).
+    /// - Returns: `true` to discard the event, `false` to pass it through.
+    nonisolated static func shouldSwallow(
+        hotkeyCode: CGKeyCode,
+        eventType: CGEventType,
+        eventKeyCode: CGKeyCode
+    ) -> Bool {
+        guard modifierMask(for: hotkeyCode) == nil else { return false }
+        guard eventType == .keyDown || eventType == .keyUp else { return false }
+        return eventKeyCode == hotkeyCode
     }
 }

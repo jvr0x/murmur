@@ -30,4 +30,23 @@ final class HotkeyDetectionTests: XCTestCase {
         XCTAssertEqual(HotkeyManager.modifierActive(forKeyCode: 61, flags: [.maskShift]), false)
         XCTAssertNil(HotkeyManager.modifierActive(forKeyCode: 0, flags: [.maskAlternate]))
     }
+
+    /// An ordinary-key hotkey (e.g. F20 = 90) swallows its own key-down/up so the key does
+    /// not also reach the focused app; other keys and flags-changed events pass through.
+    ///
+    /// Regression: a listen-only tap let the hotkey leak into the frontmost app (F20 walked
+    /// Claude Code back through prompt history).
+    func testSwallowsOrdinaryHotkeyKeyEventsOnly() {
+        XCTAssertTrue(HotkeyManager.shouldSwallow(hotkeyCode: 90, eventType: .keyDown, eventKeyCode: 90))
+        XCTAssertTrue(HotkeyManager.shouldSwallow(hotkeyCode: 90, eventType: .keyUp, eventKeyCode: 90))
+        XCTAssertFalse(HotkeyManager.shouldSwallow(hotkeyCode: 90, eventType: .keyDown, eventKeyCode: 0))
+        XCTAssertFalse(HotkeyManager.shouldSwallow(hotkeyCode: 90, eventType: .flagsChanged, eventKeyCode: 90))
+    }
+
+    /// A modifier hotkey (e.g. Right Option = 61) is never swallowed: a modifier flag can't
+    /// be discarded cleanly and a bare modifier leaks no character/action to other apps.
+    func testModifierHotkeyNeverSwallowed() {
+        XCTAssertFalse(HotkeyManager.shouldSwallow(hotkeyCode: 61, eventType: .keyDown, eventKeyCode: 61))
+        XCTAssertFalse(HotkeyManager.shouldSwallow(hotkeyCode: 61, eventType: .flagsChanged, eventKeyCode: 61))
+    }
 }
