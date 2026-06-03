@@ -18,6 +18,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkey: HotkeyManager?
     /// Menu-bar status item and menu.
     private var statusItem: StatusItemController?
+    /// Watches permission state to rebuild the hotkey tap the moment access is granted.
+    private var permissions: PermissionsModel?
     /// Combine subscriptions (e.g. live hotkey re-install on settings change).
     private var cancellables = Set<AnyCancellable>()
 
@@ -33,7 +35,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = DictationController(settings: settings)
         self.controller = controller
 
-        let statusItem = StatusItemController(settings: settings)
+        let permissions = PermissionsModel()
+        self.permissions = permissions
+
+        let statusItem = StatusItemController(settings: settings, permissions: permissions)
         statusItem.install()
         self.statusItem = statusItem
 
@@ -48,6 +53,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         startServerIfNeeded()
         installHotkey(controller: controller)
         requestPermissionsIfNeeded()
+        observePermissions(controller: controller)
     }
 
     /// Requests the required permissions on launch, and opens the onboarding window if the
@@ -60,6 +66,25 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             Log.app.info("required permissions missing; showing onboarding")
             statusItem?.presentOnboarding()
         }
+    }
+
+    /// Watches permission state and rebuilds the hotkey tap the moment Input Monitoring and
+    /// Accessibility are both granted — so a grant takes effect immediately, without the
+    /// previous "grant changes nothing until you restart" behavior.
+    /// - Parameter controller: The pipeline the rebuilt hotkey drives.
+    private func observePermissions(controller: DictationController) {
+        guard let permissions else { return }
+        permissions.$snapshot
+            .removeDuplicates()
+            .sink { [weak self] snapshot in
+                guard let self, let hotkey = self.hotkey else { return }
+                if snapshot.warrantsHotkeyRebuild(tapActive: hotkey.isActive) {
+                    Log.app.info("permissions now sufficient; rebuilding hotkey tap")
+                    self.rebuildHotkey(keyCode: self.settings.config.hotkeyKeyCode, controller: controller)
+                }
+            }
+            .store(in: &cancellables)
+        permissions.start()
     }
 
     /// Stops background processes on quit.

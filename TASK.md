@@ -38,6 +38,11 @@
       from the app-icon wave, `isTemplate` so it adapts to light/dark) + per-state colored
       status dot (red/blue/purple/green), replacing the emoji glyphs. `DictationState.hudLabel`
       centralizes the status wording (tested in `DictationStateTests`).
+- [x] Status HUD redesign (2026-06-02): SwiftUI-hosted panel (`HUDView.swift`) with the
+      app logo + an animated Solana-gradient waveform per state — reactive bars while
+      Listening, a flowing sine while Transcribing, a gently pulsing sine while Polishing,
+      a flat line while Inserting — plus the status label. `RecordingHUD` now takes
+      `DictationState` instead of a text string.
 
 ### Setup / verification (2026-06-01)
 - [x] Brainstorm + design spec approved.
@@ -71,6 +76,14 @@
   hotkeys still pass through (a modifier flag can't be discarded cleanly). The active tap
   relies on Accessibility (already requested for text insertion). Covered by
   `HotkeyDetectionTests`.
+- **Granted permission did nothing until restart (2026-06-02)** — the CGEvent tap was created
+  once at launch and only rebuilt on a hotkey-code change, never on a permission change; the
+  onboarding window also only re-read state on appear / manual "Refresh". Now a
+  `PermissionsModel` polls and refreshes on app reactivation, `AppDelegate` rebuilds the tap
+  the moment Input Monitoring + Accessibility are granted (`PermissionSnapshot.warrantsHotkeyRebuild`),
+  and `OnboardingView` observes it for live status. Logic covered by `PermissionMonitorTests`
+  (run via a one-off verifier since `swift test` is blocked by the CLT toolchain bug).
+  Secondary: ad-hoc re-signing on each rebuild can still stale a TCC grant — see Discovered.
 
 ## Discovered During Work
 - `OnboardingView.swift:20` has the same hardcoded "hold Right Option and speak" string as
@@ -83,3 +96,8 @@
   touched). A healthy Xcode/toolchain builds normally via `swift build`.
 - Entry point uses `MainActor.assumeIsolated` (requires macOS 14) because `main.swift`
   top-level code is nonisolated but `AppDelegate` is `@MainActor`.
+- **Stable signing identity for TCC**: the app is ad-hoc signed and re-signed on every
+  `make-app.sh` build, so macOS can stale a previously-granted permission (its cdhash no
+  longer matches the System Settings entry), forcing a remove/re-add. A stable self-signed
+  identity (consistent designated requirement) would keep grants across rebuilds. Out of
+  scope for the live re-check fix; tracked here.

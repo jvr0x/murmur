@@ -13,6 +13,8 @@ public final class StatusItemController: NSObject {
     private var headerItem: NSMenuItem?
     /// Settings backing the settings window.
     private let settings: SettingsStore
+    /// Live permission state, shared with the onboarding window for live status.
+    private let permissions: PermissionsModel
     /// The floating status HUD.
     private let hud = RecordingHUD()
     /// The lazily-created settings window.
@@ -21,9 +23,12 @@ public final class StatusItemController: NSObject {
     private var onboardingWindow: NSWindow?
 
     /// Creates the controller.
-    /// - Parameter settings: The shared settings store.
-    public init(settings: SettingsStore) {
+    /// - Parameters:
+    ///   - settings: The shared settings store.
+    ///   - permissions: The shared, live permission state for onboarding.
+    public init(settings: SettingsStore, permissions: PermissionsModel) {
         self.settings = settings
+        self.permissions = permissions
         super.init()
     }
 
@@ -69,11 +74,7 @@ public final class StatusItemController: NSObject {
         case .cleaning:    setDot(.systemPurple)
         case .inserting:   setDot(.systemGreen)
         }
-        if let label = state.hudLabel {
-            hud.show(label)
-        } else {
-            hud.hide()
-        }
+        hud.update(state)
     }
 
     /// Briefly shows an error glyph and logs the error.
@@ -167,7 +168,7 @@ public final class StatusItemController: NSObject {
     /// required permission is missing).
     public func presentOnboarding() {
         if onboardingWindow == nil {
-            let window = NSWindow(contentViewController: NSHostingController(rootView: OnboardingView()))
+            let window = NSWindow(contentViewController: NSHostingController(rootView: OnboardingView(model: permissions)))
             window.title = "Murmur Permissions"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false

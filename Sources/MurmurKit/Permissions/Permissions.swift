@@ -39,6 +39,16 @@ public enum Permissions {
         _ = CGRequestListenEventAccess()
     }
 
+    /// A snapshot of all three permission states at this moment.
+    /// - Returns: The current microphone / accessibility / input-monitoring grants.
+    public static func snapshot() -> PermissionSnapshot {
+        PermissionSnapshot(
+            microphone: hasMicrophone,
+            accessibility: hasAccessibility,
+            inputMonitoring: hasInputMonitoring
+        )
+    }
+
     /// Opens a System Settings privacy pane by URL.
     /// - Parameter pane: An `x-apple.systempreferences:` URL string.
     public static func openSettings(_ pane: String) {

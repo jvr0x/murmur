@@ -1,37 +1,37 @@
 import SwiftUI
 
-/// First-run / permissions screen that shows the three required grants and links out to
-/// the relevant System Settings panes.
+/// First-run / permissions screen showing the three required grants. Status updates **live**
+/// as the user grants each one (no manual refresh needed) via the shared `PermissionsModel`,
+/// and the rows link out to the relevant System Settings panes.
 public struct OnboardingView: View {
-    /// Whether microphone access is granted.
-    @State private var microphone = false
-    /// Whether Accessibility is granted.
-    @State private var accessibility = false
-    /// Whether Input Monitoring is granted.
-    @State private var inputMonitoring = false
+    /// Live permission state, shared with the app so grants take effect immediately.
+    @ObservedObject private var model: PermissionsModel
 
-    /// Creates the view.
-    public init() {}
+    /// Creates the view bound to the shared permissions model.
+    /// - Parameter model: The live permission state.
+    public init(model: PermissionsModel) {
+        self._model = ObservedObject(wrappedValue: model)
+    }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Murmur needs three permissions")
                 .font(.title2).bold()
-            Text("Grant each, then hold Right Option and speak.")
+            Text("Grant each, then hold your hotkey and speak.")
                 .font(.callout).foregroundStyle(.secondary)
 
             permissionRow(
                 name: "Microphone",
                 detail: "Record your voice",
-                granted: microphone
+                granted: model.snapshot.microphone
             ) {
-                Task { _ = await Permissions.requestMicrophone(); refresh() }
+                Task { _ = await Permissions.requestMicrophone(); model.refresh() }
             }
 
             permissionRow(
                 name: "Accessibility",
                 detail: "Insert text into other apps",
-                granted: accessibility
+                granted: model.snapshot.accessibility
             ) {
                 Permissions.promptAccessibility()
                 Permissions.openSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
@@ -40,18 +40,29 @@ public struct OnboardingView: View {
             permissionRow(
                 name: "Input Monitoring",
                 detail: "Detect the hold-to-talk hotkey",
-                granted: inputMonitoring
+                granted: model.snapshot.inputMonitoring
             ) {
                 Permissions.requestInputMonitoring()
                 Permissions.openSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")
             }
 
             Spacer()
-            Button("Refresh status", action: refresh)
+            HStack {
+                if model.snapshot.allGranted {
+                    Label("All set — hold your hotkey and speak", systemImage: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                        .font(.callout)
+                }
+                Spacer()
+                Button("Refresh status") { model.refresh() }
+            }
         }
         .padding(24)
         .frame(width: 440, height: 340)
-        .onAppear(perform: refresh)
+        .onAppear {
+            model.start()
+            model.refresh()
+        }
     }
 
     /// Builds one permission row with a status icon and a Grant button.
@@ -72,12 +83,5 @@ public struct OnboardingView: View {
             Spacer()
             if !granted { Button("Grant", action: action) }
         }
-    }
-
-    /// Re-reads the current permission states.
-    private func refresh() {
-        microphone = Permissions.hasMicrophone
-        accessibility = Permissions.hasAccessibility
-        inputMonitoring = Permissions.hasInputMonitoring
     }
 }
