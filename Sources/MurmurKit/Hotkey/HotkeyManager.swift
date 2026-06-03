@@ -29,6 +29,9 @@ public final class HotkeyManager {
     /// Tracks the current down/up state to debounce auto-repeat and duplicate flag events.
     private var isDown = false
 
+    /// Whether the event tap is currently installed (created and not torn down).
+    public var isActive: Bool { eventTap != nil }
+
     /// Creates a manager for the given key code.
     /// - Parameter keyCode: The virtual key code (default Right Option is 61; any Option works).
     public init(keyCode: UInt16) {

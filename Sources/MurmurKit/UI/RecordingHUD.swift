@@ -1,21 +1,27 @@
 import AppKit
+import SwiftUI
 
-/// A small, non-interactive floating panel that shows the current pipeline status.
+/// A small, non-interactive floating panel showing the current pipeline status with
+/// the app logo and an animated Solana-gradient waveform.
 @MainActor
 public final class RecordingHUD {
     /// The floating panel, created lazily.
     private var panel: NSPanel?
-    /// The status label inside the panel.
-    private let label = NSTextField(labelWithString: "")
+    /// Drives the hosted SwiftUI view's animated state.
+    private let model = HUDModel()
+
+    /// The panel size, sized to fit the hosted SwiftUI content.
+    private static let size = NSSize(width: 252, height: 96)
 
     /// Creates an empty HUD.
     public init() {}
 
-    /// Shows the HUD with the given status text.
-    /// - Parameter text: The status message (e.g. "Listening…").
-    public func show(_ text: String) {
+    /// Reflects a pipeline state: shows and animates the HUD, or hides it when idle.
+    /// - Parameter state: The current dictation state.
+    public func update(_ state: DictationState) {
+        guard state.hudLabel != nil else { hide(); return }
         ensurePanel()
-        label.stringValue = text
+        model.state = state
         panel?.orderFrontRegardless()
     }
 
@@ -28,7 +34,7 @@ public final class RecordingHUD {
     private func ensurePanel() {
         guard panel == nil else { return }
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 220, height: 56),
+            contentRect: NSRect(origin: .zero, size: Self.size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -40,24 +46,24 @@ public final class RecordingHUD {
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary]
 
-        let container = NSVisualEffectView(frame: panel.contentRect(forFrameRect: panel.frame))
-        container.material = .hudWindow
-        container.state = .active
-        container.wantsLayer = true
-        container.layer?.cornerRadius = 12
-        container.autoresizingMask = [.width, .height]
+        let effect = NSVisualEffectView(frame: NSRect(origin: .zero, size: Self.size))
+        effect.material = .hudWindow
+        effect.state = .active
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = 18
+        effect.layer?.cornerCurve = .continuous
+        effect.layer?.masksToBounds = true
+        effect.autoresizingMask = [.width, .height]
 
-        label.textColor = .labelColor
-        label.alignment = .center
-        label.font = .systemFont(ofSize: 14, weight: .medium)
-        label.frame = NSRect(x: 12, y: 16, width: 196, height: 24)
-        label.autoresizingMask = [.width]
-        container.addSubview(label)
-        panel.contentView = container
+        let host = NSHostingView(rootView: HUDView(model: model))
+        host.frame = effect.bounds
+        host.autoresizingMask = [.width, .height]
+        effect.addSubview(host)
+        panel.contentView = effect
 
         if let screen = NSScreen.main {
             let frame = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: frame.midX - 110, y: frame.minY + 90))
+            panel.setFrameOrigin(NSPoint(x: frame.midX - Self.size.width / 2, y: frame.minY + 90))
         }
         self.panel = panel
     }
