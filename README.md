@@ -1,5 +1,9 @@
 # Murmur
 
+<div align="center">
+  <img src="docs/murmur-logo.png" alt="Murmur Logo" width="200" />
+</div>
+
 Local-first, hold-to-talk voice dictation for macOS. Hold a hotkey, speak, release —
 your speech is transcribed and inserted at the cursor in any app. Similar in spirit to
 Wispr Flow, but open and self-hosted: the speech-to-text and optional LLM cleanup run
