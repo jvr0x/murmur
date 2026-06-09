@@ -79,4 +79,4 @@ relaunch.
 
 ## License
 
-TBD.
+MIT. See [`LICENSE`](LICENSE).
