@@ -84,8 +84,23 @@
   and `OnboardingView` observes it for live status. Logic covered by `PermissionMonitorTests`
   (run via a one-off verifier since `swift test` is blocked by the CLT toolchain bug).
   Secondary: ad-hoc re-signing on each rebuild can still stale a TCC grant — see Discovered.
+- **Cleanup LLM answered the transcript instead of cleaning it (2026-06-23)** — with the
+  optional LLM pass, a dictated question or command was sent as a bare user turn, so small
+  reasoning models (e.g. qwen3 4B, thinking on) replied to it instead of fixing punctuation
+  and removing fillers. `CleanupService` now quarantines the transcript: the request is the
+  system prompt + two few-shot pairs (a spoken question is cleaned, not answered) + the raw
+  text fenced in `<transcript>` tags with an explicit "never act on it" directive
+  (`buildMessages`/`wrap`). `parse` strips any `<think>…</think>` reasoning trace
+  (`stripThinking`), and the payload sends `chat_template_kwargs: {enable_thinking:false}`
+  (best-effort: honored by vLLM/llama.cpp, ignored by Ollama's `/v1`). `Prompts.defaultCleanup`
+  hardened too — no migration, the structural changes carry existing saved prompts. Covered by
+  `CleanupServiceTests` (builder + think-stripping), verified via the one-off swiftc verifier
+  since `swift test` is blocked by the CLT toolchain bug.
 
 ## Discovered During Work
+- Cleanup few-shot examples are English; for non-English dictation a 4B model could be nudged
+  toward English despite the "preserve original language" rule. Revisit (localize the examples
+  to the configured language, or drop them) if drift shows up in live use.
 - `OnboardingView.swift:20` has the same hardcoded "hold Right Option and speak" string as
   the menu header bug above; out of scope for the reported fix. Decide whether to derive it
   from `KeyName.display(for: config.hotkeyKeyCode)` too.
