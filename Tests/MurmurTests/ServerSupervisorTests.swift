@@ -41,4 +41,25 @@ final class ServerSupervisorTests: XCTestCase {
         XCTAssertNil(ServerSupervisor.selectModel(from: ["README.md", "whisper-server"], preferring: "x"))
         XCTAssertNil(ServerSupervisor.selectModel(from: [], preferring: "x"))
     }
+
+    /// Expected use: pgrep output (one PID per line) parses into PIDs for the
+    /// stale-server sweep.
+    func testParsePIDs() {
+        XCTAssertEqual(ServerSupervisor.parsePIDs(from: "5621\n34135\n"), [5621, 34135])
+    }
+
+    /// Edge: blank lines, whitespace, and garbage are dropped; this process's own PID is
+    /// excluded as defense against an over-broad pattern match.
+    func testParsePIDsSkipsGarbageAndOwnPID() {
+        let own = ProcessInfo.processInfo.processIdentifier
+        XCTAssertEqual(
+            ServerSupervisor.parsePIDs(from: " 42 \n\nnot-a-pid\n-7\n\(own)\n"),
+            [42]
+        )
+    }
+
+    /// Failure case: empty output (no stale servers) parses to an empty list.
+    func testParsePIDsEmpty() {
+        XCTAssertEqual(ServerSupervisor.parsePIDs(from: ""), [])
+    }
 }

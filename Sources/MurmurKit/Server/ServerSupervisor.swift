@@ -39,10 +39,52 @@ public final class ServerSupervisor {
             Log.server.error("no ggml-*.bin model in resources — run Scripts/fetch-model.sh")
             return
         }
+        reapStaleServers()
         shouldRun = true
         restarts = 0
         Log.server.info("loading model \(model.lastPathComponent, privacy: .public)")
         launch(binary: binary, model: model, port: port)
+    }
+
+    /// Terminates leftover bundled whisper-server processes from previous runs.
+    ///
+    /// A relaunch via `pkill`/crash skips `applicationWillTerminate`, orphaning the
+    /// child — and each orphan keeps a several-hundred-MB model resident (a dozen were
+    /// once found squatting the swap) while the oldest may still own the port, so the
+    /// fresh server can't bind. Anything whose command line contains the bundled
+    /// resource path is ours to reap; a concurrent second Murmur instance would lose
+    /// its server too, but two instances already can't share the port.
+    private func reapStaleServers() {
+        let pgrep = Process()
+        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        pgrep.arguments = ["-f", "Murmur.app/Contents/Resources/whisper-server"]
+        let pipe = Pipe()
+        pgrep.standardOutput = pipe
+        pgrep.standardError = FileHandle.nullDevice
+        do {
+            try pgrep.run()
+        } catch {
+            Log.server.error("stale-server sweep failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        pgrep.waitUntilExit()
+        let pids = ServerSupervisor.parsePIDs(from: String(data: data, encoding: .utf8) ?? "")
+        guard !pids.isEmpty else { return }
+        Log.server.info("terminating \(pids.count) stale whisper-server process(es)")
+        for pid in pids { kill(pid, SIGTERM) }
+    }
+
+    /// Parses `pgrep` output into process IDs, dropping blanks, garbage, and this
+    /// process itself (defense against an over-broad match).
+    /// - Parameter output: Raw `pgrep` stdout (one PID per line).
+    /// - Returns: The parsed PIDs.
+    static func parsePIDs(from output: String) -> [Int32] {
+        let own = ProcessInfo.processInfo.processIdentifier
+        return output
+            .split(whereSeparator: \.isNewline)
+            .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
+            .filter { $0 > 0 && $0 != own }
     }
 
     /// Stops the server and prevents further restarts.
