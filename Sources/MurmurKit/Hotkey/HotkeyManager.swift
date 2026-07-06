@@ -1,47 +1,188 @@
 import AppKit
 import CoreGraphics
 
-/// Global hold-to-talk hotkey driven by a `CGEventTap`.
+/// Global dictation hotkey driven by a `CGEventTap` on a dedicated thread.
 ///
-/// Fires `onPress` when the configured key goes down and `onRelease` when it comes up.
-/// Modifier keys (Option, Command, Shift, Control) are detected via their high-level
-/// `CGEventFlags` on `flagsChanged` events — which `CGEvent.flags` always reports — so a
-/// modifier hotkey responds to **either** the left or right key. Ordinary keys use
-/// `keyDown`/`keyUp`, and the tap **swallows** the hotkey's own key events so an
-/// ordinary-key hotkey doesn't also reach the focused app (e.g. an F-key triggering an
-/// action there). Modifier hotkeys pass through — a modifier flag can't be discarded
-/// cleanly and a bare modifier leaks no character/action.
+/// Fires `onPress` when the configured combo goes down and `onRelease` when it comes up.
+/// Detection lives in ``HotkeyDetector`` (combos, auto-repeat debounce, missed-key-up
+/// resync); this class owns the tap plumbing.
+///
+/// The tap runs on its **own thread with its own run loop** — never the main run loop.
+/// The tap is an active (`.defaultTap`) filter, so every keyboard event in the session
+/// waits on its callback; serviced from the main run loop it stalls whenever the app
+/// does (audio-engine start, HUD animation, memory pressure), and after ~1 s of
+/// unresponsiveness macOS disables the tap and the hotkey's key-up is lost mid-hold.
+/// An ordinary-key hotkey (e.g. F20) is hit hardest because holding it auto-repeats
+/// `keyDown`s into the stalled tap. On its own user-interactive thread the callback
+/// only runs the pure detector, so it always answers in time.
+///
+/// If the system still disables the tap (`tapDisabledByTimeout`/`ByUserInput`), it is
+/// re-enabled in place and the detector state is reconciled against the *physical* key
+/// state, releasing a hold whose key-up was swallowed by the outage instead of leaving
+/// a stuck recording.
 @MainActor
 public final class HotkeyManager {
-    /// Called when the hotkey is pressed.
+    /// Called on the main thread when the hotkey combo is pressed.
     public var onPress: (() -> Void)?
-    /// Called when the hotkey is released.
+    /// Called on the main thread when the hotkey combo is released.
     public var onRelease: (() -> Void)?
     /// Called if the event tap cannot be created (usually missing Input Monitoring).
     public var onTapFailure: (() -> Void)?
 
-    /// The virtual key code to watch.
-    private let keyCode: CGKeyCode
-    /// The active event tap.
-    private var eventTap: CFMachPort?
-    /// The run-loop source for the tap.
-    private var runLoopSource: CFRunLoopSource?
-    /// Tracks the current down/up state to debounce auto-repeat and duplicate flag events.
-    private var isDown = false
+    /// The tap thread owner.
+    private let runner: EventTapRunner
 
     /// Whether the event tap is currently installed (created and not torn down).
-    public var isActive: Bool { eventTap != nil }
+    public var isActive: Bool { runner.isActive }
 
-    /// Creates a manager for the given key code.
-    /// - Parameter keyCode: The virtual key code (default Right Option is 61; any Option works).
-    public init(keyCode: UInt16) {
-        self.keyCode = CGKeyCode(keyCode)
+    /// Creates a manager for the given combo.
+    /// - Parameters:
+    ///   - keyCode: The primary virtual key code (default Right Option is 61).
+    ///   - modifiers: Raw `CGEventFlags` of extra required modifiers (0 for none).
+    public init(keyCode: UInt16, modifiers: UInt64 = 0) {
+        self.runner = EventTapRunner(
+            keyCode: CGKeyCode(keyCode),
+            modifiers: CGEventFlags(rawValue: modifiers)
+        )
+        runner.onEdge = { [weak self] edge in
+            // Tap-thread → main-thread hop; a serial queue preserves edge order.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    switch edge {
+                    case .press: self.onPress?()
+                    case .release: self.onRelease?()
+                    case .releaseThenPress:
+                        self.onRelease?()
+                        self.onPress?()
+                    case .none: break
+                    }
+                }
+            }
+        }
     }
 
-    /// Installs the event tap on the main run loop.
+    /// Installs the event tap on its dedicated thread.
     ///
-    /// Calls ``onTapFailure`` if the tap cannot be created.
+    /// Returns once the tap is live (or creation failed); calls ``onTapFailure`` on
+    /// failure so the caller can surface the missing Input Monitoring permission.
     public func start() {
+        guard runner.start() else {
+            Log.hotkey.error("failed to create event tap — grant Input Monitoring permission")
+            onTapFailure?()
+            return
+        }
+        Log.hotkey.info("hotkey tap installed for key code \(Int(self.runner.keyCode)) modifiers 0x\(String(self.runner.modifiers.rawValue, radix: 16), privacy: .public)")
+    }
+
+    /// Removes the event tap and stops its thread.
+    public func stop() {
+        runner.stop()
+    }
+
+    /// Maps a modifier key code to its high-level `CGEventFlags` mask, if it is a modifier.
+    ///
+    /// Both the left and right key of each pair map to the same mask, so a modifier hotkey
+    /// responds to either side.
+    /// - Parameter keyCode: The virtual key code.
+    /// - Returns: The flag mask set while that modifier is held, or `nil` for ordinary keys.
+    nonisolated public static func modifierMask(for keyCode: CGKeyCode) -> CGEventFlags? {
+        HotkeyDetector.modifierMask(for: keyCode)
+    }
+
+    /// Reports whether a modifier key code's modifier is active in the given flags.
+    /// - Parameters:
+    ///   - keyCode: The virtual key code.
+    ///   - flags: The event flags from a `flagsChanged` event.
+    /// - Returns: `true`/`false` for a modifier key, or `nil` if `keyCode` is not a modifier.
+    nonisolated public static func modifierActive(forKeyCode keyCode: CGKeyCode, flags: CGEventFlags) -> Bool? {
+        guard let mask = HotkeyDetector.modifierMask(for: keyCode) else { return nil }
+        return flags.contains(mask)
+    }
+}
+
+/// Owns the tap thread, the `CGEventTap`, and the detector state.
+///
+/// Everything after `start()` runs on the tap thread: the callback feeds the detector
+/// and answers the swallow verdict inline, so the hot path never waits on the main
+/// thread. Tap handles are guarded by a lock because `start()`/`stop()`/`isActive`
+/// are called from the main thread.
+final class EventTapRunner {
+    /// The primary virtual key code.
+    let keyCode: CGKeyCode
+    /// The sanitized extra required modifiers.
+    let modifiers: CGEventFlags
+    /// Called **on the tap thread** for every detected edge.
+    var onEdge: ((HotkeyDetector.Edge) -> Void)?
+
+    /// Guards the tap handles across the main and tap threads.
+    private let lock = NSLock()
+    /// The active event tap (guarded by `lock`).
+    private var eventTap: CFMachPort?
+    /// The tap's run-loop source (guarded by `lock`).
+    private var runLoopSource: CFRunLoopSource?
+    /// The tap thread's run loop, kept to stop it (guarded by `lock`).
+    private var runLoop: CFRunLoop?
+    /// Detection state; touched only on the tap thread after `start()`.
+    private var detector: HotkeyDetector
+
+    /// Whether the event tap is currently installed.
+    var isActive: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return eventTap != nil
+    }
+
+    /// Creates a runner for a combo.
+    /// - Parameters:
+    ///   - keyCode: The primary virtual key code.
+    ///   - modifiers: Extra required modifiers (unsupported bits are stripped).
+    init(keyCode: CGKeyCode, modifiers: CGEventFlags) {
+        self.keyCode = keyCode
+        self.modifiers = modifiers.intersection(HotkeyDetector.allowedModifiers)
+        self.detector = HotkeyDetector(keyCode: keyCode, modifiers: modifiers)
+    }
+
+    deinit { stop() }
+
+    /// Spawns the tap thread and blocks briefly until the tap is created there.
+    /// - Returns: `true` if the tap is live, `false` if creation failed (permissions).
+    func start() -> Bool {
+        stop()
+        let ready = DispatchSemaphore(value: 0)
+        let thread = Thread { [weak self] in
+            self?.threadMain(ready: ready)
+        }
+        thread.name = "io.github.jvr0x.murmur.hotkey-tap"
+        thread.qualityOfService = .userInteractive
+        thread.start()
+        // Tap creation is immediate in practice; the timeout only guards a wedged spawn.
+        _ = ready.wait(timeout: .now() + 2)
+        return isActive
+    }
+
+    /// Disables and tears down the tap, stopping its thread's run loop.
+    func stop() {
+        lock.lock()
+        let tap = eventTap
+        let source = runLoopSource
+        let loop = runLoop
+        eventTap = nil
+        runLoopSource = nil
+        runLoop = nil
+        lock.unlock()
+
+        if let tap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+        }
+        if let source { CFRunLoopSourceInvalidate(source) }
+        if let loop { CFRunLoopStop(loop) }
+    }
+
+    /// The tap thread body: creates the tap, signals readiness, and services it until
+    /// the run loop is stopped.
+    /// - Parameter ready: Signaled once creation succeeded or failed.
+    private func threadMain(ready: DispatchSemaphore) {
         let mask = (CGEventMask(1) << CGEventType.keyDown.rawValue)
             | (CGEventMask(1) << CGEventType.keyUp.rawValue)
             | (CGEventMask(1) << CGEventType.flagsChanged.rawValue)
@@ -54,129 +195,79 @@ public final class HotkeyManager {
             eventsOfInterest: mask,
             callback: { _, type, event, refcon in
                 guard let refcon else { return Unmanaged.passUnretained(event) }
-                let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
-                manager.handle(type: type, event: event)
-                // Swallow the hotkey's own key events so the key doesn't also reach the
-                // focused app. Modifier hotkeys and all other events pass through.
-                let eventKeyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-                return HotkeyManager.shouldSwallow(
-                    hotkeyCode: manager.keyCode, eventType: type, eventKeyCode: eventKeyCode
-                ) ? nil : Unmanaged.passUnretained(event)
+                let runner = Unmanaged<EventTapRunner>.fromOpaque(refcon).takeUnretainedValue()
+                return runner.handle(type: type, event: event)
+                    ? nil
+                    : Unmanaged.passUnretained(event)
             },
             userInfo: selfPtr
         ) else {
-            Log.hotkey.error("failed to create event tap — grant Input Monitoring permission")
-            onTapFailure?()
+            ready.signal()
             return
         }
 
-        eventTap = tap
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        lock.lock()
+        eventTap = tap
         runLoopSource = source
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        runLoop = CFRunLoopGetCurrent()
+        lock.unlock()
+
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
-        Log.hotkey.info("hotkey tap installed for key code \(Int(self.keyCode))")
+        ready.signal()
+        CFRunLoopRun()
     }
 
-    /// Removes the event tap.
-    public func stop() {
-        if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: false) }
-        if let source = runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
-        eventTap = nil
-        runLoopSource = nil
-    }
-
-    /// Handles a tapped event (runs on the main run loop where the source is installed).
+    /// Handles one tapped event on the tap thread.
     /// - Parameters:
     ///   - type: The event type.
     ///   - event: The event.
-    nonisolated private func handle(type: CGEventType, event: CGEvent) {
-        // The system disables a tap that is slow or interrupted; re-enable it.
+    /// - Returns: `true` to swallow the event, `false` to pass it through.
+    private func handle(type: CGEventType, event: CGEvent) -> Bool {
+        // The system disables a tap it deems unresponsive; re-enable in place and
+        // reconcile with the physical key state, since edges were lost meanwhile.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            DispatchQueue.main.async { [weak self] in self?.reenable() }
-            return
-        }
-
-        let down: Bool
-        if HotkeyManager.modifierMask(for: keyCode) != nil {
-            // Modifier hotkey: track the high-level flag (responds to either left/right key).
-            guard type == .flagsChanged else { return }
-            down = HotkeyManager.modifierActive(forKeyCode: keyCode, flags: event.flags) ?? false
-        } else {
-            // Ordinary key: match the key code on key down/up.
-            let kc = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-            guard kc == keyCode else { return }
-            switch type {
-            case .keyDown: down = true
-            case .keyUp: down = false
-            default: return
+            lock.lock()
+            let tap = eventTap
+            lock.unlock()
+            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            let edge = detector.reconcile(
+                comboPhysicallyDown: Self.comboPhysicallyDown(keyCode: keyCode, modifiers: modifiers)
+            )
+            if edge != .none {
+                Log.hotkey.info("tap was disabled by the system; reconciled with a \(String(describing: edge), privacy: .public)")
+                onEdge?(edge)
             }
+            return false
         }
-        DispatchQueue.main.async { [weak self] in self?.setDown(down) }
+
+        let eventKeyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        let verdict = detector.process(
+            type: type, eventKeyCode: eventKeyCode, flags: event.flags, isRepeat: isRepeat
+        )
+        if verdict.edge != .none { onEdge?(verdict.edge) }
+        return verdict.swallow
     }
 
-    /// Re-enables the tap after the system disabled it.
-    private func reenable() {
-        guard let tap = eventTap else { return }
-        CGEvent.tapEnable(tap: tap, enable: true)
-        Log.hotkey.debug("event tap re-enabled")
-    }
-
-    /// Applies a debounced down/up transition and fires the callbacks.
-    /// - Parameter down: Whether the key is now down.
-    private func setDown(_ down: Bool) {
-        guard down != isDown else { return }
-        isDown = down
-        Log.hotkey.debug("hotkey \(down ? "pressed" : "released")")
-        if down { onPress?() } else { onRelease?() }
-    }
-
-    /// Maps a modifier key code to its high-level `CGEventFlags` mask, if it is a modifier.
-    ///
-    /// Both the left and right key of each pair map to the same mask, so a modifier hotkey
-    /// responds to either side.
-    /// - Parameter keyCode: The virtual key code.
-    /// - Returns: The flag mask set while that modifier is held, or `nil` for ordinary keys.
-    nonisolated static func modifierMask(for keyCode: CGKeyCode) -> CGEventFlags? {
-        switch keyCode {
-        case 55, 54: return .maskCommand     // left / right command
-        case 56, 60: return .maskShift       // left / right shift
-        case 58, 61: return .maskAlternate   // left / right option
-        case 59, 62: return .maskControl     // left / right control
-        case 63: return .maskSecondaryFn     // fn / globe
-        default: return nil
+    /// Probes whether every part of the combo is still physically held, via the
+    /// session's live key state (survives tap outages, unlike tracked edges).
+    /// - Parameters:
+    ///   - keyCode: The primary virtual key code.
+    ///   - modifiers: The required extra modifiers.
+    /// - Returns: `true` if the primary key and every required modifier are down.
+    static func comboPhysicallyDown(keyCode: CGKeyCode, modifiers: CGEventFlags) -> Bool {
+        func anyKeyDown(_ codes: [CGKeyCode]) -> Bool {
+            codes.contains { CGEventSource.keyState(.combinedSessionState, key: $0) }
         }
-    }
-
-    /// Reports whether a modifier key code's modifier is active in the given flags.
-    /// - Parameters:
-    ///   - keyCode: The virtual key code.
-    ///   - flags: The event flags from a `flagsChanged` event.
-    /// - Returns: `true`/`false` for a modifier key, or `nil` if `keyCode` is not a modifier.
-    nonisolated static func modifierActive(forKeyCode keyCode: CGKeyCode, flags: CGEventFlags) -> Bool? {
-        guard let mask = modifierMask(for: keyCode) else { return nil }
-        return flags.contains(mask)
-    }
-
-    /// Reports whether the event tap should swallow this event so the hotkey key does not
-    /// also reach the focused app.
-    ///
-    /// Only an **ordinary-key** hotkey is swallowed, and only on its own `keyDown`/`keyUp`.
-    /// Modifier hotkeys always pass through: a modifier flag can't be discarded cleanly, and
-    /// a bare modifier leaks no character/action to other apps. Every non-matching event
-    /// passes through untouched.
-    /// - Parameters:
-    ///   - hotkeyCode: The configured hotkey's virtual key code.
-    ///   - eventType: The tapped event's type.
-    ///   - eventKeyCode: The tapped event's key code (meaningful only for `keyDown`/`keyUp`).
-    /// - Returns: `true` to discard the event, `false` to pass it through.
-    nonisolated static func shouldSwallow(
-        hotkeyCode: CGKeyCode,
-        eventType: CGEventType,
-        eventKeyCode: CGKeyCode
-    ) -> Bool {
-        guard modifierMask(for: hotkeyCode) == nil else { return false }
-        guard eventType == .keyDown || eventType == .keyUp else { return false }
-        return eventKeyCode == hotkeyCode
+        let primaryCodes = HotkeyDetector.modifierMask(for: keyCode)
+            .map(HotkeyDetector.keyCodes(for:)) ?? [keyCode]
+        guard anyKeyDown(primaryCodes) else { return false }
+        for mask in [CGEventFlags.maskCommand, .maskShift, .maskAlternate, .maskControl, .maskSecondaryFn]
+        where modifiers.contains(mask) {
+            guard anyKeyDown(HotkeyDetector.keyCodes(for: mask)) else { return false }
+        }
+        return true
     }
 }
