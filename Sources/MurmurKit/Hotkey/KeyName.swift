@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Maps macOS virtual key codes to human-readable names for display in Settings.
@@ -7,6 +8,26 @@ public enum KeyName {
     /// - Returns: A display name, or `"Key #<code>"` for unmapped codes.
     public static func display(for keyCode: UInt16) -> String {
         names[keyCode] ?? "Key #\(keyCode)"
+    }
+
+    /// Returns a readable name for a combo, e.g. "⌃ + Space" or "⌘ + ⇧ + F20".
+    ///
+    /// Modifier symbols follow the Apple HIG order (fn, ⌃, ⌥, ⇧, ⌘); a combo with no
+    /// modifiers renders as the plain key name.
+    /// - Parameters:
+    ///   - keyCode: The primary virtual key code.
+    ///   - modifiers: Raw `CGEventFlags` of the extra required modifiers.
+    /// - Returns: The combo display name.
+    public static func display(keyCode: UInt16, modifiers: UInt64) -> String {
+        let flags = CGEventFlags(rawValue: modifiers)
+        var parts: [String] = []
+        if flags.contains(.maskSecondaryFn) { parts.append("fn") }
+        if flags.contains(.maskControl) { parts.append("⌃") }
+        if flags.contains(.maskAlternate) { parts.append("⌥") }
+        if flags.contains(.maskShift) { parts.append("⇧") }
+        if flags.contains(.maskCommand) { parts.append("⌘") }
+        parts.append(display(for: keyCode))
+        return parts.joined(separator: " + ")
     }
 
     /// Virtual-key-code → display-name table (ANSI layout + modifiers).

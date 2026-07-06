@@ -81,15 +81,59 @@ public struct SettingsView: View {
     /// Hotkey and text-insertion configuration.
     @ViewBuilder private var hotkeySection: some View {
         Section("Hotkey & Insertion") {
-            LabeledContent("Hold-to-talk key") {
-                KeyRecorderView(keyCode: $settings.config.hotkeyKeyCode)
+            Picker("Hotkey", selection: hotkeyPresetBinding) {
+                ForEach(HotkeyPreset.allCases) { preset in
+                    Text(preset.displayName).tag(preset)
+                }
             }
+            LabeledContent("Record your own") {
+                KeyRecorderView(
+                    keyCode: $settings.config.hotkeyKeyCode,
+                    modifiers: $settings.config.hotkeyModifiers
+                )
+            }
+            Picker("Activation", selection: $settings.config.hotkeyMode) {
+                Text("Hold to talk").tag(HotkeyActivationMode.hold)
+                Text("Tap to start / stop").tag(HotkeyActivationMode.toggle)
+            }
+            Text(activationHint)
+                .font(.caption).foregroundStyle(.secondary)
             Picker("Insertion method", selection: $settings.config.insertionMethod) {
                 Text("Paste (Cmd-V)").tag(InsertionMethod.paste)
                 Text("Keystroke").tag(InsertionMethod.keystroke)
             }
             Toggle("Restore clipboard after paste", isOn: $settings.config.restoreClipboard)
         }
+    }
+
+    /// The one-line explanation of the selected activation mode.
+    private var activationHint: String {
+        switch settings.config.hotkeyMode {
+        case .hold:
+            return "Hold the hotkey while speaking; release to transcribe."
+        case .toggle:
+            return "Tap once to start recording, tap again to finish — comfortable for long notes."
+        }
+    }
+
+    /// A binding for the hotkey preset picker.
+    ///
+    /// The selection is derived from the configured combo; choosing a preset applies its
+    /// combo, while "Custom…" leaves the recorded combo untouched.
+    private var hotkeyPresetBinding: Binding<HotkeyPreset> {
+        Binding(
+            get: {
+                HotkeyPreset.detect(
+                    keyCode: settings.config.hotkeyKeyCode,
+                    modifiers: settings.config.hotkeyModifiers
+                )
+            },
+            set: { preset in
+                guard let combo = preset.combo else { return }
+                settings.config.hotkeyKeyCode = combo.keyCode
+                settings.config.hotkeyModifiers = combo.modifiers
+            }
+        )
     }
 
     /// Local server configuration.
