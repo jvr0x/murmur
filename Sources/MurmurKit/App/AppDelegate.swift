@@ -80,7 +80,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, let hotkey = self.hotkey else { return }
                 if snapshot.warrantsHotkeyRebuild(tapActive: hotkey.isActive) {
                     Log.app.info("permissions now sufficient; rebuilding hotkey tap")
-                    self.rebuildHotkey(keyCode: self.settings.config.hotkeyKeyCode, controller: controller)
+                    self.rebuildHotkey(
+                        keyCode: self.settings.config.hotkeyKeyCode,
+                        modifiers: self.settings.config.hotkeyModifiers,
+                        controller: controller
+                    )
                 }
             }
             .store(in: &cancellables)
@@ -108,32 +112,52 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    /// Wires the hold-to-talk hotkey to the dictation controller, and re-installs it live
-    /// whenever the hotkey is changed in Settings.
-    /// - Parameter controller: The pipeline to start/stop on key press/release.
+    /// Wires the dictation hotkey to the controller, and re-installs it live whenever the
+    /// combo is changed in Settings. The activation mode is read per event, so switching
+    /// hold/toggle needs no tap rebuild.
+    /// - Parameter controller: The pipeline to start/stop on hotkey edges.
     private func installHotkey(controller: DictationController) {
-        rebuildHotkey(keyCode: settings.config.hotkeyKeyCode, controller: controller)
+        rebuildHotkey(
+            keyCode: settings.config.hotkeyKeyCode,
+            modifiers: settings.config.hotkeyModifiers,
+            controller: controller
+        )
         settings.$config
-            .map(\.hotkeyKeyCode)
-            .removeDuplicates()
+            .map { ($0.hotkeyKeyCode, $0.hotkeyModifiers) }
+            .removeDuplicates { $0 == $1 }
             .dropFirst()
-            .sink { [weak self] keyCode in
+            .sink { [weak self] combo in
                 guard let self, let controller = self.controller else { return }
-                Log.hotkey.info("hotkey changed in settings; re-installing for key code \(Int(keyCode))")
-                self.rebuildHotkey(keyCode: keyCode, controller: controller)
+                Log.hotkey.info("hotkey changed in settings; re-installing for key code \(Int(combo.0))")
+                self.rebuildHotkey(keyCode: combo.0, modifiers: combo.1, controller: controller)
             }
             .store(in: &cancellables)
     }
 
-    /// Tears down any existing hotkey tap and installs a fresh one for `keyCode`.
+    /// Tears down any existing hotkey tap and installs a fresh one for the combo.
+    ///
+    /// Hold mode maps press→begin / release→end; toggle mode starts or stops on each
+    /// press and ignores releases (comfortable for long notes).
     /// - Parameters:
-    ///   - keyCode: The virtual key code to watch.
-    ///   - controller: The pipeline to start/stop on key press/release.
-    private func rebuildHotkey(keyCode: UInt16, controller: DictationController) {
+    ///   - keyCode: The primary virtual key code to watch.
+    ///   - modifiers: Raw extra-modifier flags the combo requires.
+    ///   - controller: The pipeline to start/stop on hotkey edges.
+    private func rebuildHotkey(keyCode: UInt16, modifiers: UInt64, controller: DictationController) {
         hotkey?.stop()
-        let hotkey = HotkeyManager(keyCode: keyCode)
-        hotkey.onPress = { controller.begin() }
-        hotkey.onRelease = { controller.end() }
+        let hotkey = HotkeyManager(keyCode: keyCode, modifiers: modifiers)
+        hotkey.onPress = { [weak self] in
+            guard let self else { return }
+            switch self.settings.config.hotkeyMode {
+            case .hold:
+                controller.begin()
+            case .toggle:
+                controller.isRecording ? controller.end() : controller.begin()
+            }
+        }
+        hotkey.onRelease = { [weak self] in
+            guard let self, self.settings.config.hotkeyMode == .hold else { return }
+            controller.end()
+        }
         hotkey.onTapFailure = { [weak self] in
             self?.statusItem?.showError(MurmurError.permissionDenied("Input Monitoring"))
         }

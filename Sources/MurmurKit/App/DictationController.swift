@@ -23,6 +23,9 @@ public final class DictationController {
         didSet { onStateChange?(state) }
     }
 
+    /// Whether a recording is currently in progress (drives toggle-mode taps).
+    public var isRecording: Bool { state == .recording }
+
     /// Creates the controller.
     /// - Parameter settings: The shared settings store.
     public init(settings: SettingsStore) {

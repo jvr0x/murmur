@@ -48,7 +48,7 @@ public final class StatusItemController: NSObject {
         let menu = NSMenu()
         menu.delegate = self
         let header = NSMenuItem(
-            title: Self.menuHeaderTitle(for: settings.config.hotkeyKeyCode),
+            title: Self.menuHeaderTitle(for: settings.config),
             action: nil,
             keyEquivalent: ""
         )
@@ -131,11 +131,33 @@ public final class StatusItemController: NSObject {
         statusDot.isHidden = false
     }
 
-    /// Builds the disabled menu header naming the configured hold-to-talk key.
-    /// - Parameter keyCode: The configured hotkey's virtual key code.
-    /// - Returns: A header like `"Murmur — hold Right Option ⌥ to talk"`.
-    nonisolated static func menuHeaderTitle(for keyCode: UInt16) -> String {
-        "Murmur — hold \(KeyName.display(for: keyCode)) to talk"
+    /// Builds the disabled menu header naming the configured hotkey combo and how it
+    /// activates (hold vs. tap), so the menu always matches Settings.
+    /// - Parameters:
+    ///   - keyCode: The configured primary key code.
+    ///   - modifiers: The configured raw extra-modifier flags.
+    ///   - mode: The configured activation mode.
+    /// - Returns: A header like `"Murmur — hold ⌃ + Space to talk"` or
+    ///   `"Murmur — tap F20 to start/stop"`.
+    nonisolated static func menuHeaderTitle(
+        keyCode: UInt16, modifiers: UInt64, mode: HotkeyActivationMode
+    ) -> String {
+        let combo = KeyName.display(keyCode: keyCode, modifiers: modifiers)
+        switch mode {
+        case .hold: return "Murmur — hold \(combo) to talk"
+        case .toggle: return "Murmur — tap \(combo) to start/stop"
+        }
+    }
+
+    /// Convenience overload deriving the header from a config.
+    /// - Parameter config: The live app config.
+    /// - Returns: The menu header title.
+    nonisolated static func menuHeaderTitle(for config: AppConfig) -> String {
+        menuHeaderTitle(
+            keyCode: config.hotkeyKeyCode,
+            modifiers: config.hotkeyModifiers,
+            mode: config.hotkeyMode
+        )
     }
 
     /// Builds a target-bound menu item.
@@ -199,6 +221,6 @@ extension StatusItemController: NSMenuDelegate {
     /// settings subscription.
     /// - Parameter menu: The menu about to be displayed.
     public func menuNeedsUpdate(_ menu: NSMenu) {
-        headerItem?.title = Self.menuHeaderTitle(for: settings.config.hotkeyKeyCode)
+        headerItem?.title = Self.menuHeaderTitle(for: settings.config)
     }
 }

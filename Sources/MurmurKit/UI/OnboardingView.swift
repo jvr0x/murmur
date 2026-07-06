@@ -17,7 +17,7 @@ public struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Murmur needs three permissions")
                 .font(.title2).bold()
-            Text("Grant each, then hold your hotkey and speak.")
+            Text("Grant each, then use your hotkey to dictate anywhere.")
                 .font(.callout).foregroundStyle(.secondary)
 
             permissionRow(
