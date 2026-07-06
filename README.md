@@ -17,8 +17,9 @@ Early development. See [`PLANNING.md`](PLANNING.md) and
 
 ## How it works
 
-1. Hold the hotkey (default: **Right Option ⌥**) and speak.
-2. Release — Murmur records the audio, sends it to the speech-to-text engine, and
+1. Hold the hotkey (default: **Right Option ⌥**) and speak — or, in **toggle mode**,
+   tap once to start and tap again to finish (comfortable for long notes).
+2. On release/stop, Murmur sends the recorded audio to the speech-to-text engine and
    (optionally) runs an LLM cleanup pass.
 3. The text is inserted at your cursor in the frontmost app.
 
@@ -77,9 +78,17 @@ The LLM Cleanup section has a **Provider** picker that prefills the base URL for
 **Custom** to point anywhere else (e.g. a model server on your Spark). The URL stays the
 source of truth, so editing it just flips the picker to the matching provider.
 
-To change the **hold-to-talk key**, click **Record** and press the key (or modifier) you
-want — either Option, fn, an F-key, etc. Esc cancels. The change applies immediately, no
-relaunch.
+### Hotkey
+
+Pick a ready-made **preset** (Right Option ⌥, Right Command ⌘, fn/Globe, F20, F13,
+⌃ + Space, ⌥ + Space) or record your own: click **Record** and press any key, modifier,
+or **combo** — modifiers plus a key (⌃ + Space), or modifiers only (⌘ + ⌥). Esc cancels.
+Changes apply immediately, no relaunch.
+
+**Activation** chooses how the hotkey drives a dictation:
+
+- **Hold to talk** (default) — press and hold while speaking, release to transcribe.
+- **Tap to start / stop** — tap once to start recording, tap again to finish.
 
 ## License
 

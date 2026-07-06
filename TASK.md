@@ -44,6 +44,26 @@
       a flat line while Inserting — plus the status label. `RecordingHUD` now takes
       `DictationState` instead of a text string.
 
+### Hotkey robustness, combos, presets, activation modes (2026-07-06)
+- [x] `HotkeyDetector`: pure detection state machine (edges, auto-repeat debounce,
+      missed-key-up resync, tap-outage reconcile via physical key state, combo matching,
+      swallow pairing). Covered by `HotkeyDetectionTests`.
+- [x] `HotkeyManager`/`EventTapRunner`: CGEventTap moved off the main run loop onto a
+      dedicated user-interactive thread (fixes the F20 hold bug — see Fixes).
+- [x] Combo hotkeys: `AppConfig.hotkeyModifiers` (raw CGEventFlags), combo-aware
+      `KeyName.display(keyCode:modifiers:)`, `KeyComboRecorder` capture machine
+      (modifiers+key, modifier-only combos, Esc cancels). `KeyRecorderTests`.
+- [x] Activation modes: `AppConfig.hotkeyMode` — hold-to-talk or tap-to-toggle for long
+      notes; wired per-event in `AppDelegate`, no tap rebuild on mode switch.
+- [x] Hotkey presets (Spokenly-style): `HotkeyPreset` picker (Right Option, Right
+      Command, fn/Globe, F20, F13, ⌃+Space, ⌥+Space, Custom) derived from the stored
+      combo. `HotkeyPresetTests`.
+- [x] Menu header derives from combo + mode ("hold ⌃ + Space to talk" / "tap F20 to
+      start/stop"); onboarding copy made mode-agnostic (closes the Discovered item).
+- [x] `ServerSupervisor.reapStaleServers` + graceful quit in `launch.sh` (see Fixes).
+- [x] All logic verified via the one-off swiftc verifier (93 checks) — `swift test`
+      still blocked by the CLT toolchain bug.
+
 ### Setup / verification (2026-06-01)
 - [x] Brainstorm + design spec approved.
 - [x] Compiles via `swiftc` (lib + executable); 19 core-logic checks pass.
@@ -97,13 +117,40 @@
   `CleanupServiceTests` (builder + think-stripping), verified via the one-off swiftc verifier
   since `swift test` is blocked by the CLT toolchain bug.
 
+- **F20 hold-and-release dead; quick taps "worked" (2026-07-06)** — the tap's run-loop
+  source lived on the **main** run loop while `.defaultTap` makes every keyboard event in
+  the session wait on the callback. Holding an ordinary key (F20) auto-repeats keyDowns
+  into the tap, so any main-thread stall (synchronous `AVAudioEngine.start()` on press,
+  HUD `TimelineView` animation, machine-wide memory pressure) got the tap disabled by
+  timeout, the keyUp was lost, and `isDown` desynced — press edges then did nothing while
+  release edges fired stale `end()`s (the "tap pops the HUD" symptom). The tap now runs on
+  a dedicated user-interactive thread servicing only the pure `HotkeyDetector`; the
+  detector self-heals (fresh keyDown while down → release-then-press; after
+  `tapDisabledBy*` the state reconciles against `CGEventSource.keyState`). Toggle mode is
+  additionally immune by design (only press edges act). Covered by `HotkeyDetectionTests`.
+- **Orphaned whisper-server pile (2026-07-06)** — `launch.sh` relaunched via
+  `pkill -x Murmur`; SIGTERM skips `applicationWillTerminate`, so the supervisor never
+  stopped its child. Twelve orphans had accumulated (two holding ~1 GB resident, the rest
+  swapped out; the oldest still owned port 8126 so fresh servers couldn't bind).
+  `ServerSupervisor` now sweeps processes matching `Murmur.app/Contents/Resources/whisper-server`
+  before launching, and `launch.sh` quits the app gracefully via AppleScript with a pkill
+  fallback. Covered by `ServerSupervisorTests.testParsePIDs*`.
+
 ## Discovered During Work
 - Cleanup few-shot examples are English; for non-English dictation a 4B model could be nudged
   toward English despite the "preserve original language" rule. Revisit (localize the examples
   to the configured language, or drop them) if drift shows up in live use.
-- `OnboardingView.swift:20` has the same hardcoded "hold Right Option and speak" string as
-  the menu header bug above; out of scope for the reported fix. Decide whether to derive it
-  from `KeyName.display(for: config.hotkeyKeyCode)` too.
+- ~~`OnboardingView.swift:20` hardcoded "hold Right Option and speak"~~ — resolved
+  2026-07-06: onboarding copy is mode-agnostic; the menu header derives from combo + mode.
+- Toggle mode has no maximum recording duration; a forgotten session accumulates
+  ~64 KB/s of samples (~230 MB/h). Consider a configurable cap or an idle-silence stop.
+- Bare-modifier hotkeys respond to **either side** of the pair (e.g. the Right Option
+  preset also fires on Left Option) because detection uses the high-level flag. Side-
+  specific detection would need per-keycode tracking of `flagsChanged` +
+  `CGEventSource.keyState`; not worth it until someone asks.
+- **Machine hygiene (2026-07-06)**: the dev Mac's boot volume was at 100% (1.7 GB free of
+  461 GB) with swap 10.2/11.3 GB used — this is what made main-thread stalls frequent
+  enough to surface the tap-disable bug. Murmur can't fix that; free disk space.
 - The Command Line Tools toolchain in the dev sandbox is broken two ways: a
   `PackageDescription` dylib/interface mismatch (breaks `swift build`) and a duplicate
   `SwiftBridging` modulemap (breaks all Foundation imports). `Scripts/build-swiftc.sh`
