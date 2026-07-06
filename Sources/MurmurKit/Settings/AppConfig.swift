@@ -16,6 +16,14 @@ public enum InsertionMethod: String, Codable, CaseIterable, Sendable {
     case keystroke
 }
 
+/// How the hotkey starts and stops a dictation.
+public enum HotkeyActivationMode: String, Codable, CaseIterable, Sendable {
+    /// Press starts recording, release stops it (push-to-talk).
+    case hold
+    /// Tap starts recording, tap again stops it (comfortable for long notes).
+    case toggle
+}
+
 /// User-configurable application settings.
 ///
 /// Decoding tolerates missing keys (an older or partial `config.json` still loads), with
@@ -40,8 +48,13 @@ public struct AppConfig: Codable, Equatable, Sendable {
     public var cleanupPrompt: String
     /// Hard timeout (seconds) for the cleanup request; on expiry the raw transcript is used.
     public var cleanupTimeout: Double
-    /// Virtual key code of the hold-to-talk hotkey (default 61 = Right Option).
+    /// Virtual key code of the hotkey's primary key (default 61 = Right Option).
     public var hotkeyKeyCode: UInt16
+    /// Raw `CGEventFlags` of extra modifiers the hotkey requires (0 = none). Stored raw
+    /// so this type stays Foundation-only; consumers sanitize to the supported flags.
+    public var hotkeyModifiers: UInt64
+    /// How the hotkey starts/stops dictation (hold-to-talk or tap-to-toggle).
+    public var hotkeyMode: HotkeyActivationMode
     /// Text-insertion strategy.
     public var insertionMethod: InsertionMethod
     /// Whether to restore the previous clipboard contents after a paste.
@@ -61,6 +74,8 @@ public struct AppConfig: Codable, Equatable, Sendable {
         cleanupPrompt: Prompts.defaultCleanup,
         cleanupTimeout: 8.0,
         hotkeyKeyCode: 61,
+        hotkeyModifiers: 0,
+        hotkeyMode: .hold,
         insertionMethod: .paste,
         restoreClipboard: true,
         whisperServerPort: 8126
@@ -78,6 +93,8 @@ public struct AppConfig: Codable, Equatable, Sendable {
         cleanupPrompt: String,
         cleanupTimeout: Double,
         hotkeyKeyCode: UInt16,
+        hotkeyModifiers: UInt64,
+        hotkeyMode: HotkeyActivationMode,
         insertionMethod: InsertionMethod,
         restoreClipboard: Bool,
         whisperServerPort: Int
@@ -92,6 +109,8 @@ public struct AppConfig: Codable, Equatable, Sendable {
         self.cleanupPrompt = cleanupPrompt
         self.cleanupTimeout = cleanupTimeout
         self.hotkeyKeyCode = hotkeyKeyCode
+        self.hotkeyModifiers = hotkeyModifiers
+        self.hotkeyMode = hotkeyMode
         self.insertionMethod = insertionMethod
         self.restoreClipboard = restoreClipboard
         self.whisperServerPort = whisperServerPort
@@ -101,7 +120,8 @@ public struct AppConfig: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case sttBackend, sttBaseURL, sttModel, language
         case cleanupEnabled, llmBaseURL, llmModel, cleanupPrompt, cleanupTimeout
-        case hotkeyKeyCode, insertionMethod, restoreClipboard, whisperServerPort
+        case hotkeyKeyCode, hotkeyModifiers, hotkeyMode
+        case insertionMethod, restoreClipboard, whisperServerPort
     }
 
     /// Decodes a config, substituting defaults for any missing field.
@@ -119,6 +139,8 @@ public struct AppConfig: Codable, Equatable, Sendable {
         cleanupPrompt = try c.decodeIfPresent(String.self, forKey: .cleanupPrompt) ?? d.cleanupPrompt
         cleanupTimeout = try c.decodeIfPresent(Double.self, forKey: .cleanupTimeout) ?? d.cleanupTimeout
         hotkeyKeyCode = try c.decodeIfPresent(UInt16.self, forKey: .hotkeyKeyCode) ?? d.hotkeyKeyCode
+        hotkeyModifiers = try c.decodeIfPresent(UInt64.self, forKey: .hotkeyModifiers) ?? d.hotkeyModifiers
+        hotkeyMode = try c.decodeIfPresent(HotkeyActivationMode.self, forKey: .hotkeyMode) ?? d.hotkeyMode
         insertionMethod = try c.decodeIfPresent(InsertionMethod.self, forKey: .insertionMethod) ?? d.insertionMethod
         restoreClipboard = try c.decodeIfPresent(Bool.self, forKey: .restoreClipboard) ?? d.restoreClipboard
         whisperServerPort = try c.decodeIfPresent(Int.self, forKey: .whisperServerPort) ?? d.whisperServerPort
