@@ -60,10 +60,13 @@ else
 fi
 
 echo "==> Ad-hoc code-signing (helps macOS keep TCC permissions across rebuilds)"
-if codesign --force --sign - "$APP" 2>/dev/null; then
+# Finder-info/quarantine xattrs make codesign fail with "resource fork ... detritus".
+xattr -cr "$APP" 2>/dev/null || true
+if SIGN_ERR="$(codesign --force --sign - "$APP" 2>&1)"; then
   echo "    signed (ad-hoc)"
 else
-  echo "    codesign unavailable; continuing unsigned"
+  echo "    codesign failed; continuing with the linker's binary signature:" >&2
+  echo "    $SIGN_ERR" >&2
 fi
 
 echo "==> Built $APP"
