@@ -19,6 +19,8 @@ public enum MurmurError: Error, LocalizedError, Equatable {
     case permissionDenied(String)
     /// The configured backend or model is invalid.
     case invalidConfiguration(String)
+    /// Another app took over the microphone mid-recording, so the session was cancelled.
+    case micInterrupted
 
     /// A user-facing description of the error.
     public var errorDescription: String? {
@@ -37,6 +39,8 @@ public enum MurmurError: Error, LocalizedError, Equatable {
             return "Missing permission: \(which)."
         case .invalidConfiguration(let detail):
             return "Invalid configuration: \(detail)"
+        case .micInterrupted:
+            return "The microphone was interrupted by another app; recording stopped."
         }
     }
 }

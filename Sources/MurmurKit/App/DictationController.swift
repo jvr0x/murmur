@@ -30,6 +30,16 @@ public final class DictationController {
     /// - Parameter settings: The shared settings store.
     public init(settings: SettingsStore) {
         self.settings = settings
+        // The recorder fires this on the main queue when another app takes over the mic
+        // mid-recording; treat it as a failed cycle so the UI resets instead of hanging.
+        // `assumeIsolated` is safe: the callback is always delivered on the main queue, which
+        // is the main actor's executor (same pattern as `PermissionMonitor`).
+        recorder.onSessionInterrupted = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.state == .recording else { return }
+                self.reset(with: MurmurError.micInterrupted)
+            }
+        }
     }
 
     /// Starts recording (hotkey down). Ignored unless idle.
