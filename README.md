@@ -67,6 +67,49 @@ modulemap bug (every Foundation import fails to compile), `Scripts/build-swiftc.
 builds without SwiftPM and auto-applies a VFS-overlay workaround — no system files are
 modified. `make-app.sh` falls back to it automatically.
 
+### Permissions & code signing
+
+Murmur needs three macOS permissions — **Microphone**, **Accessibility**, and **Input
+Monitoring**. macOS (TCC) ties each grant to the app's *code signature*: when you grant a
+permission it records the app's **designated requirement (DR)** and re-checks it on every
+launch. `make-app.sh` signs the bundle automatically and picks the strongest mode
+available:
+
+- **Ad-hoc with a stable DR** — the default, zero setup. With no code-signing certificate
+  on the machine, the app is ad-hoc signed but pinned to an explicit DR of
+  `identifier "io.github.jvr0x.murmur"`. That DR does not change between rebuilds, so your
+  permission grants survive updates. Caveat: an identifier-only DR is satisfied by any
+  local binary that claims this bundle identifier — there is no cryptographic anchor.
+  Acceptable for a personal dev build.
+- **Certificate-anchored DR** — recommended. Run `./Scripts/make-signing-cert.sh` **once**
+  to create a self-signed code-signing certificate in your login keychain. Afterwards
+  `make-app.sh` auto-detects it and signs with it, producing a DR of the form
+  `identifier "…" and certificate leaf = H"…"` — stable across rebuilds *and*
+  cryptographically anchored to your certificate. The script is interactive: it asks for
+  your login-keychain password (so codesign can use the key without prompting on every
+  build) and macOS may show a one-time trust dialog. Override the identity name with
+  `MURMUR_SIGN_IDENTITY` if you like (it must match for both scripts).
+
+**Why permissions used to break on every rebuild.** The old signing produced an implicit
+DR of `cdhash H"…"` — a hash of that exact build. Every rebuild changed the hash, so the
+DR macOS had stored no longer matched, macOS treated the new build as a different app, and
+all three grants silently went stale. The stable DR above fixes that.
+
+**Switching signing modes re-grants once.** Moving from ad-hoc to the certificate (or the
+reverse) changes the DR one final time, so macOS asks for the three permissions once more
+right after the switch. From then on the DR is constant and grants persist.
+
+**Update in place, don't delete-then-copy.** Because TCC matches on the bundle at its
+install path, `make-app.sh` rebuilds `Murmur.app` in place without removing the directory.
+If you keep a copy elsewhere (e.g. `~/Applications`), *overwrite* it rather than deleting
+and re-copying, so the existing TCC entry keeps matching:
+
+```sh
+ditto Murmur.app ~/Applications/Murmur.app   # overwrites in place
+```
+
+A delete-then-copy can drop the TCC entry and force an unnecessary re-grant.
+
 ## Configuration
 
 Settings (menu-bar icon → Settings) let you change the hotkey, STT/LLM endpoints, models,

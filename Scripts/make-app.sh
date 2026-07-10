@@ -59,11 +59,49 @@ else
   echo "    (no model yet — run Scripts/fetch-model.sh for local mode)"
 fi
 
-echo "==> Ad-hoc code-signing (helps macOS keep TCC permissions across rebuilds)"
+echo "==> Code-signing (so macOS keeps TCC permissions across rebuilds)"
 # Finder-info/quarantine xattrs make codesign fail with "resource fork ... detritus".
 xattr -cr "$APP" 2>/dev/null || true
-if SIGN_ERR="$(codesign --force --sign - "$APP" 2>&1)"; then
-  echo "    signed (ad-hoc)"
+
+# Reason: TCC records the app's *designated requirement* (DR) when you grant a
+# permission and re-checks it on every launch. A plain ad-hoc signature has an
+# implicit DR of `cdhash H"..."`, which changes on every rebuild — so each new
+# build looks like a different app and the grant goes stale. We pin a *stable*
+# DR instead, so grants survive rebuilds. Two modes, auto-detected:
+#   • A code-signing identity named "$IDENTITY" exists  -> sign with it; codesign
+#     derives `identifier "..." and certificate leaf = H"..."`, which is stable
+#     across rebuilds AND cryptographically anchored to that cert.
+#   • No such identity -> ad-hoc, but with an explicit identifier-only DR.
+#     Stable across rebuilds with zero setup. Tradeoff: an identifier-only DR is
+#     satisfied by *any* local binary claiming this bundle identifier — there is
+#     no cryptographic anchor. Acceptable for a personal dev build; run
+#     Scripts/make-signing-cert.sh once for the cert-anchored variant above.
+IDENTITY="${MURMUR_SIGN_IDENTITY:-Murmur Dev Signing}"
+
+if security find-identity -v -p codesigning 2>/dev/null | grep -qF "\"$IDENTITY\""; then
+  echo "    using code-signing identity: $IDENTITY"
+  if SIGN_ERR="$(codesign --force --timestamp=none --sign "$IDENTITY" "$APP" 2>&1)"; then
+    SIGNED=1
+  fi
+else
+  BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")"
+  echo "    no '$IDENTITY' identity found; ad-hoc signing with a stable designated requirement"
+  echo "    (run Scripts/make-signing-cert.sh once for a cryptographically anchored signature)"
+  if SIGN_ERR="$(codesign --force --sign - --identifier "$BUNDLE_ID" \
+      -r="designated => identifier \"$BUNDLE_ID\"" "$APP" 2>&1)"; then
+    SIGNED=1
+  fi
+fi
+
+if [ "${SIGNED:-0}" = 1 ]; then
+  echo "    signed"
+  if codesign --verify --strict "$APP" 2>/dev/null; then
+    echo "    verify --strict OK"
+  else
+    echo "    WARNING: codesign --verify --strict failed" >&2
+  fi
+  echo "    designated requirement:"
+  codesign -d -r- "$APP" 2>/dev/null | sed 's/^/      /'
 else
   echo "    codesign failed; continuing with the linker's binary signature:" >&2
   echo "    $SIGN_ERR" >&2
