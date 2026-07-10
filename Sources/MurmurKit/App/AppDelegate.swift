@@ -48,24 +48,31 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         controller.onError = { [weak statusItem] error in
             statusItem?.showError(error)
+            // Reason: a missing-permission failure (e.g. the mic revoked mid-session) leaves
+            // the app silently unable to work, so reopen the window that explains how to grant
+            // it. Any `permissionDenied` payload qualifies.
+            if let error = error as? MurmurError, case .permissionDenied = error {
+                statusItem?.presentOnboarding()
+            }
         }
 
         startServerIfNeeded()
         installHotkey(controller: controller)
-        requestPermissionsIfNeeded()
+        presentOnboardingIfNeeded()
         observePermissions(controller: controller)
     }
 
-    /// Requests the required permissions on launch, and opens the onboarding window if the
-    /// hotkey/insertion permissions are missing (so the user isn't left with a silent app).
-    private func requestPermissionsIfNeeded() {
-        Task { _ = await Permissions.requestMicrophone() }
-        if !Permissions.hasInputMonitoring { Permissions.requestInputMonitoring() }
-        if !Permissions.hasAccessibility { Permissions.promptAccessibility() }
-        if !Permissions.hasInputMonitoring || !Permissions.hasAccessibility {
-            Log.app.info("required permissions missing; showing onboarding")
-            statusItem?.presentOnboarding()
-        }
+    /// Opens the onboarding window when any required permission is still missing — without
+    /// firing a single system prompt at launch.
+    ///
+    /// The previous launch flow requested the microphone and prompted for Accessibility and
+    /// Input Monitoring every time, so three macOS pop-ups appeared at once. Now the window
+    /// explains what's needed and each system confirmation appears only when the user clicks
+    /// that row's "Grant".
+    private func presentOnboardingIfNeeded() {
+        guard !Permissions.snapshot().allGranted else { return }
+        Log.app.info("required permissions missing; showing onboarding")
+        statusItem?.presentOnboarding()
     }
 
     /// Watches permission state and rebuilds the hotkey tap the moment Input Monitoring and
@@ -159,7 +166,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             controller.end()
         }
         hotkey.onTapFailure = { [weak self] in
+            // Reason: a dead tap means Input Monitoring/Accessibility was revoked or staled;
+            // surface it and reopen onboarding rather than leaving only a cryptic 2-second dot.
             self?.statusItem?.showError(MurmurError.permissionDenied("Input Monitoring"))
+            self?.statusItem?.presentOnboarding()
         }
         hotkey.start()
         self.hotkey = hotkey

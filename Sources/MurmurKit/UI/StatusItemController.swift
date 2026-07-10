@@ -194,7 +194,7 @@ public final class StatusItemController: NSObject {
             window.title = "Murmur Permissions"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
-            window.setContentSize(NSSize(width: 440, height: 340))
+            window.setContentSize(NSSize(width: 440, height: 380))
             onboardingWindow = window
         }
         present(onboardingWindow)
