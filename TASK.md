@@ -135,6 +135,40 @@
   `ServerSupervisor` now sweeps processes matching `Murmur.app/Contents/Resources/whisper-server`
   before launching, and `launch.sh` quits the app gracefully via AppleScript with a pkill
   fallback. Covered by `ServerSupervisorTests.testParsePIDs*`.
+- **Crashed when another app held/reconfigured the mic (2026-07-10)** — one `AVAudioEngine`
+  lived for the app's lifetime, so after another process reconfigured the input device
+  (browser call, AirPods profile switch) the engine's cached input format went stale and the
+  next hotkey press raised an uncatchable AVFAudio `NSException` from `installTap`/`start()`
+  (`format.sampleRate == hwFormat.sampleRate`) — `DictationController`'s `try/catch` never
+  saw it. `AudioRecorder` now builds a fresh engine per session (reads the *current* hardware
+  config), guards both format dimensions (0 Hz / 0 ch), and observes
+  `.AVAudioEngineConfigurationChange` scoped to the session engine + a generation counter: a
+  mid-recording takeover tears the session down and surfaces `MurmurError.micInterrupted` as
+  a toast instead of crashing or desyncing. `start()` also preflights the mic grant via an
+  injectable probe and throws `.permissionDenied("Microphone")` before touching an engine (no
+  implicit TCC prompt). Covered by `AudioRecorderTests` (swiftc verifier, 210 checks).
+  Residual: pure Swift can't catch ObjC exceptions — the known triggers are removed rather
+  than caught (an ObjC shim would complicate the swiftc fallback build).
+- **All three permission pop-ups fired at every launch (2026-07-10)** — the launch path
+  auto-requested mic + Accessibility + Input Monitoring, and the onboarding Grant buttons for
+  AX/IM opened the system dialog AND System Settings simultaneously. Launch is now
+  prompt-free: `presentOnboardingIfNeeded` only opens the explanatory window when something
+  is missing; each macOS confirmation fires solely on that row's Grant (mic uses the pure
+  tri-state `microphoneGrantAction` — request while `.notDetermined`, else open the pane,
+  since macOS never re-prompts after a decision); every non-granted row has a secondary
+  "Open Settings" link. `permissionDenied` pipeline errors and a dead hotkey tap reopen the
+  window instead of leaving a silent app. Covered by `OnboardingLogicTests`.
+- **TCC grants died on every rebuild/update (2026-07-10)** — plain ad-hoc signing left an
+  implicit per-build `cdhash H"…"` designated requirement, so each build looked like a new
+  app to TCC. `make-app.sh` now signs with a stable DR: a code-signing identity
+  (`MURMUR_SIGN_IDENTITY`, default "Murmur Dev Signing") when present, else ad-hoc with an
+  explicit `designated => identifier "io.github.jvr0x.murmur"` — proven byte-identical
+  across rebuilds while the cdhash changed. One-time interactive
+  `Scripts/make-signing-cert.sh` creates the cert-anchored identity (an identifier-only DR is
+  satisfiable by any local binary claiming the bundle ID — acceptable for a personal dev
+  build; the cert removes that caveat). Update in place (`ditto` over
+  `~/Applications/Murmur.app`), don't delete-then-copy. The one-time DR flip + re-grant
+  happened at the 2026-07-10 deploy.
 
 ## Discovered During Work
 - Cleanup few-shot examples are English; for non-English dictation a 4B model could be nudged
@@ -158,8 +192,7 @@
   touched). A healthy Xcode/toolchain builds normally via `swift build`.
 - Entry point uses `MainActor.assumeIsolated` (requires macOS 14) because `main.swift`
   top-level code is nonisolated but `AppDelegate` is `@MainActor`.
-- **Stable signing identity for TCC**: the app is ad-hoc signed and re-signed on every
-  `make-app.sh` build, so macOS can stale a previously-granted permission (its cdhash no
-  longer matches the System Settings entry), forcing a remove/re-add. A stable self-signed
-  identity (consistent designated requirement) would keep grants across rebuilds. Out of
-  scope for the live re-check fix; tracked here.
+- ~~**Stable signing identity for TCC**: ad-hoc re-signing on every `make-app.sh` build
+  stales TCC grants (per-build cdhash DR).~~ — resolved 2026-07-10: `make-app.sh` pins a
+  stable identifier DR by default (or a cert identity when present); one-time
+  `Scripts/make-signing-cert.sh` for the cert-anchored variant. See Fixes.
