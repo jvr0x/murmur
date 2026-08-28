@@ -31,7 +31,7 @@
   var typed = document.querySelector("[data-typing]");
   if (!hud || !status || !typed) return;
 
-  var SENTENCE = "Ship the page, then wire up GitHub Actions to publish it.";
+  var SENTENCE = "Deploy it tonight, and write the runbook tomorrow morning.";
   var CYCLE = [
     { label: "Listening\u2026", bars: true, text: null },
     { label: "Transcribing\u2026", bars: false, text: null },
