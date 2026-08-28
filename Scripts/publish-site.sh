@@ -18,8 +18,10 @@ cleanup() { git -C "$repo_root" worktree remove --force "$worktree" 2>/dev/null 
 trap cleanup EXIT
 
 # Reason: an orphan branch, so the published tree holds only the site and not the
-# Swift sources, vendored whisper.cpp build or model files from main.
-git -C "$repo_root" worktree add --orphan -q "$worktree"
+# Swift sources, vendored whisper.cpp build or model files from main. The explicit
+# -b is required: git's orphan checkout is unnamed until a branch is given, and
+# pushing refs/heads/gh-pages fails without it.
+git -C "$repo_root" worktree add --orphan -q -b "$branch" "$worktree"
 cd "$worktree"
 
 cp -R "$site_dir/." .
