@@ -590,9 +590,9 @@ td code {
 .ms ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14.5px; }
 .ms li { margin: 3px 0; }
 
-/* footer */
+/* footer (the shared .jx-footer is styled by /assets/chrome.css) */
 
-footer {
+footer:not(.jx-footer) {
   border-top: 1px solid var(--line);
   padding: 40px 0 60px;
   color: var(--dim);
