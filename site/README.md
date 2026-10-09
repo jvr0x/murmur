@@ -3,7 +3,9 @@
 Source for the GitHub Pages site at <https://jvr0x.com/murmur/>.
 
 Plain HTML, CSS and a few lines of vanilla JS. No framework, no bundler, no build step,
-and no third-party scripts, fonts or analytics.
+and no third-party scripts or analytics. The only outside resources come from the shared
+jvr0x.com chrome: `/assets/chrome.css` (which imports JetBrains Mono from Google Fonts) and
+the AGI Checkpoint signup iframe in the shared footer.
 
 ## Files
 
@@ -13,7 +15,16 @@ and no third-party scripts, fonts or analytics.
 | `assets/styles.css` | All styling, including the responsive breakpoints. |
 | `assets/app.js` | Scroll reveals and the hero's dictation-state animation. Optional: the page reads in full without it. |
 | `assets/logo.png` | The app mark, copied from `docs/murmur-logo.png`. |
+| `/assets/chrome.css` | Not in this repo. The shared jvr0x.com header/footer styles, served root-relative from the jvr0x.github.io repo. |
 | `README.md` | This file. On the published branch it becomes `BUILD.md` so it does not compete with `index.html`. |
+
+## Shared jvr0x.com chrome
+
+The blocks between `<!-- jx:header -->` / `<!-- /jx:header -->` and `<!-- jx:footer -->` /
+`<!-- /jx:footer -->` in `index.html` are the site-wide header and footer. They are rewritten
+from `partials/header.html` and `partials/footer.html` in jvr0x.github.io by its
+`tools/build.py`, so do not hand-edit them here. Murmur's own section nav and footer sit
+inside them and stay page-specific.
 
 ## Deploy
 
@@ -41,6 +52,9 @@ logged run per publish, but committing it needs a token with the `workflow` scop
 cd site
 python3 -m http.server 8099       # then open http://localhost:8099/
 ```
+
+`/assets/chrome.css` does not resolve on a local server, so the shared header and footer
+render unstyled in a preview.
 
 ## Layout breakpoints
 
