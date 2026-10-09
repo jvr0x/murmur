@@ -4,6 +4,8 @@
   <img src="docs/murmur-logo.png" alt="Murmur Logo" width="200" />
 </div>
 
+**Project page:** <https://jvr0x.com/murmur/>
+
 Local-first, hold-to-talk voice dictation for macOS. Hold a hotkey, speak, release —
 your speech is transcribed and inserted at the cursor in any app. Similar in spirit to
 Wispr Flow, but open and self-hosted: the speech-to-text and optional LLM cleanup run
@@ -132,6 +134,20 @@ Changes apply immediately, no relaunch.
 
 - **Hold to talk** (default) — press and hold while speaking, release to transcribe.
 - **Tap to start / stop** — tap once to start recording, tap again to finish.
+
+## Project page
+
+The marketing/documentation page under [`site/`](site) is published to GitHub Pages from
+the `gh-pages` branch. It is a static HTML/CSS/JS bundle with no build step; to change it,
+edit `site/` and republish:
+
+```sh
+./Scripts/publish-site.sh      # rebuilds gh-pages from site/ and pushes it
+```
+
+The `gh-pages` branch is disposable and regenerated in full, so don't edit it directly.
+See [`site/README.md`](site/README.md) for the page's structure and which sources its
+content is drawn from.
 
 ## License
 
