@@ -1,6 +1,6 @@
 # Murmur project page
 
-Source for the GitHub Pages site at <https://jvr0x.github.io/murmur/>.
+Source for the GitHub Pages site at <https://jvr0x.com/murmur/>.
 
 Plain HTML, CSS and a few lines of vanilla JS. No framework, no bundler, no build step,
 and no third-party scripts, fonts or analytics.
