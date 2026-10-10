@@ -14,8 +14,20 @@ branch="gh-pages"
 
 worktree="$(mktemp -d "${TMPDIR:-/tmp}/murmur-pages.XXXXXX")"
 rmdir "$worktree"   # git worktree add requires an absent path
-cleanup() { git -C "$repo_root" worktree remove --force "$worktree" 2>/dev/null || true; }
+# Reason: drop the local branch too once its worktree is gone. Only origin's copy
+# matters, and a leftover local gh-pages would block the next run's worktree add -b.
+cleanup() {
+    git -C "$repo_root" worktree remove --force "$worktree" 2>/dev/null || true
+    git -C "$repo_root" branch -D -q "$branch" 2>/dev/null || true
+}
 trap cleanup EXIT
+
+# Reason: a local gh-pages left by an interrupted or older run makes worktree add -b
+# fail with "branch already exists". It is safe to delete: the branch is rebuilt in
+# full from site/ below and force-pushed, so nothing on it is ever kept.
+if git -C "$repo_root" show-ref --verify --quiet "refs/heads/$branch"; then
+    git -C "$repo_root" branch -D -q "$branch"
+fi
 
 # Reason: an orphan branch, so the published tree holds only the site and not the
 # Swift sources, vendored whisper.cpp build or model files from main. The explicit
