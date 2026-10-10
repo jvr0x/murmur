@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Murmur - local hold-to-talk dictation for macOS</title>
+<meta name="description" content="Murmur is an open-source, local-first hold-to-talk dictation app for macOS. Hold a hotkey, speak, release: whisper.cpp transcribes and the text lands at your cursor in any app.">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://jvr0x.com/murmur/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="jvr0x">
+<meta property="og:title" content="Murmur - local voice dictation for macOS">
+<meta property="og:description" content="Hold a hotkey, speak, release. Transcribed by whisper.cpp on your machine and inserted at your cursor in any app.">
+<meta property="og:url" content="https://jvr0x.com/murmur/">
+<meta property="og:image" content="https://jvr0x.com/murmur/assets/logo.png">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="1024">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@jvr0x">
+<meta name="twitter:creator" content="@jvr0x">
+<meta name="twitter:title" content="Murmur - local voice dictation for macOS">
+<meta name="twitter:description" content="Hold a hotkey, speak, release. Transcribed by whisper.cpp on your machine and inserted at your cursor in any app.">
+<meta name="twitter:image" content="https://jvr0x.com/murmur/assets/logo.png">
+<link rel="icon" href="assets/logo.png">
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="/assets/chrome.css">
+</head>
+<body>
+<!-- jx:header -->
+<header class="jx-header">
+  <a class="jx-logo" href="/">jvr0x<span class="jx-blink">_</span></a>
+  <nav class="jx-nav" aria-label="Site">
+    <a href="/">home</a>
+    <a href="/about/">about</a>
+    <a href="/newsletter/">newsletter</a>
+    <a href="/models/">models</a>
+    <a href="/recipes/">recipes</a>
+    <a href="/lab/">lab</a>
+    <a href="/tools/">tools</a>
+    <a href="/bots/">bots</a>
+  </nav>
+</header>
+<!-- /jx:header -->
+
+<nav class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top"><img src="assets/logo.png" alt=""> Murmur</a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#models">Models</a>
+      <a href="#install">Install</a>
+      <a href="#config">Settings</a>
+      <a href="#arch">Architecture</a>
+      <a href="#roadmap">Roadmap</a>
+    </div>
+    <a class="btn sm nav-cta" href="https://github.com/jvr0x/murmur">GitHub</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="pill"><span class="dot"></span> Early development - macOS 14+ - Apple Silicon</span>
+      <h1>Speak it.<br><span class="grad">It's already typed.</span></h1>
+      <p class="lede">
+        Murmur is local-first, hold-to-talk voice dictation for macOS. Hold a hotkey, speak,
+        release, and your words appear <strong>at the cursor in any app</strong>. The transcription
+        and optional cleanup run on your own machine by default, and both endpoints are just URLs,
+        so processing can move to another box by changing one field.
+      </p>
+      <div class="hero-actions">
+        <a class="btn primary" href="https://github.com/jvr0x/murmur">View on GitHub</a>
+        <a class="btn" href="#install">Get started</a>
+      </div>
+      <div class="hero-meta">
+        <span>MIT licensed</span>
+        <span>Swift + whisper.cpp</span>
+        <span>No account, no telemetry</span>
+      </div>
+    </div>
+
+    <div class="hud-stage" aria-hidden="true">
+      <div class="field">
+        <div class="label">Frontmost app</div>
+        <div class="typed"><span data-typing></span><span class="caret"></span></div>
+      </div>
+      <div class="hud">
+        <img src="assets/logo.png" alt="">
+        <div class="bars">
+          <i style="animation-delay:0s"></i><i style="animation-delay:.08s"></i>
+          <i style="animation-delay:.16s"></i><i style="animation-delay:.24s"></i>
+          <i style="animation-delay:.32s"></i><i style="animation-delay:.24s"></i>
+          <i style="animation-delay:.16s"></i><i style="animation-delay:.08s"></i>
+          <i style="animation-delay:0s"></i>
+        </div>
+        <div class="status">Listening&hellip;</div>
+        <div class="hint">hold <kbd>&#8997;</kbd> right option</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="how">
+  <div class="wrap">
+    <p class="eyebrow">The cycle</p>
+    <h2>Five states, one keystroke apart</h2>
+    <p class="section-lede">
+      A dictation moves through an explicit state machine, so a second press mid-cycle can't
+      corrupt the pipeline. Every stage below is a real state in
+      <code class="mono">DictationState</code>.
+    </p>
+    <div class="pipeline">
+      <div class="step"><span class="n"></span><h3>Listen</h3><p>Hold the hotkey and speak. Audio is captured live at 16&nbsp;kHz mono.</p></div>
+      <div class="step"><span class="n"></span><h3>Transcribe</h3><p>The clip is sent to the speech-to-text backend and decoded.</p></div>
+      <div class="step"><span class="n"></span><h3>Polish</h3><p>Optional LLM pass fixes punctuation and drops fillers.</p><span class="opt">optional</span></div>
+      <div class="step"><span class="n"></span><h3>Insert</h3><p>Text lands at your cursor via paste or synthesized keystrokes.</p></div>
+      <div class="step"><span class="n"></span><h3>Idle</h3><p>Clipboard is restored and the hotkey is armed again.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <p class="eyebrow">Features</p>
+    <h2>Built for dictating into anything</h2>
+    <div class="cards">
+      <div class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M7 8v8M17 8v8M2 11v2M22 11v2"/></svg></span>
+        <h3>Hold or tap to talk</h3>
+        <p>Push-to-talk is the default. Switch to tap-to-start / tap-to-stop for long notes so you don't have to hold a key for two minutes.</p>
+      </div>
+      <div class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg></span>
+        <h3>Any hotkey or combo</h3>
+        <p>Seven presets (Right Option, Right Command, fn/Globe, F13, F20, &#8963;+Space, &#8997;+Space) or record your own combo, modifiers-only included. Changes apply live.</p>
+      </div>
+      <div class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+        <h3>Local by default</h3>
+        <p>Audio goes to a whisper.cpp server on localhost. Nothing leaves the machine unless you point an endpoint at a server you own.</p>
+      </div>
+      <div class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg></span>
+        <h3>Cursor insertion anywhere</h3>
+        <p>Paste with &#8984;V and restore your clipboard afterwards, or fall back to keystroke synthesis for apps that block pasting.</p>
+      </div>
+      <div class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18"/></svg></span>
+        <h3>Multilingual</h3>
+        <p>Language auto-detection, or pin an ISO code. The optional cleanup pass is told to preserve the original language.</p>
+      </div>
+      <div class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3"/></svg></span>
+        <h3>Floating HUD</h3>
+        <p>A borderless panel shows the current state with an animated waveform that changes per stage: reactive bars, flowing sine, pulsing sine, flat line.</p>
+      </div>
+      <div class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 21V8l9-5 9 5v13M9 21v-7h6v7"/></svg></span>
+        <h3>One URL to go remote</h3>
+        <p>Point the STT and LLM base URLs at a GPU box, e.g. an NVIDIA DGX Spark, and the same app keeps working with heavier models.</p>
+      </div>
+      <div class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 12H4M10 6l-6 6 6 6M20 18H9"/></svg></span>
+        <h3>Hotkey is swallowed</h3>
+        <p>The event tap consumes the hotkey's own key events, so F20 as a trigger won't also walk your shell history while you dictate.</p>
+      </div>
+      <div class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a7 7 0 017 7c0 3-2 4-2 6H7c0-2-2-3-2-6a7 7 0 017-7zM9 21h6"/></svg></span>
+        <h3>Permissions that stick</h3>
+        <p>Signing pins a stable designated requirement, so Microphone, Accessibility and Input Monitoring grants survive rebuilds.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="models">
+  <div class="wrap">
+    <p class="eyebrow">Backends</p>
+    <h2>Two models, both swappable</h2>
+    <p class="section-lede">
+      Transcription is always on; the cleanup pass is opt-in and never blocks the core path.
+      If the LLM is slow, the raw transcript is used instead.
+    </p>
+    <div class="cards two">
+      <div class="card">
+        <h3>Speech-to-text</h3>
+        <p style="margin-bottom:14px"><code class="mono">whisper-large-v3-turbo</code> via whisper.cpp, Metal-accelerated, multilingual. ~547&nbsp;MB model file.</p>
+        <p><b style="color:var(--text)">Local mode:</b> <code class="mono">POST /inference</code> to a bundled server on <code class="mono">127.0.0.1:8126</code>, supervised and restarted by the app.</p>
+        <p style="margin-top:8px"><b style="color:var(--text)">Remote mode:</b> any OpenAI-compatible <code class="mono">/v1/audio/transcriptions</code>.</p>
+      </div>
+      <div class="card">
+        <h3>LLM cleanup</h3>
+        <p style="margin-bottom:14px"><code class="mono">qwen2.5:7b</code> via Ollama's OpenAI-compatible API, on by default only in the sense that it is off by default. Toggle it in Settings.</p>
+        <p><b style="color:var(--text)">Provider picker:</b> Ollama (<code class="mono">localhost:11434/v1</code>), LM Studio (<code class="mono">localhost:1234/v1</code>), or Custom.</p>
+        <p style="margin-top:8px">The transcript is fenced in tags with a "never act on it" directive, so a dictated question gets punctuated rather than answered.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <p class="eyebrow">Install</p>
+    <h2>Three commands to a working dictation loop</h2>
+    <p class="section-lede">
+      There is no signed installer yet, and that is deliberate: Murmur is a personal dev build,
+      not a notarized app. You build it from source in about the time it takes the model to download.
+    </p>
+
+    <div class="steps-2">
+      <div class="code">
+        <div class="bar"><i></i><i></i><i></i><span>Requirements: Apple Silicon Mac &middot; macOS 14+ &middot; Swift toolchain</span></div>
+        <pre><span class="c"># 1. Build the whisper.cpp server and fetch the model (~547 MB)</span>
+<span class="p">$</span> ./Scripts/setup.sh
+
+<span class="c"># 2. Only if you want the optional LLM cleanup pass</span>
+<span class="p">$</span> ollama pull qwen2.5:7b
+
+<span class="c"># 3. Build Murmur.app and open it</span>
+<span class="p">$</span> ./Scripts/run.sh</pre>
+      </div>
+
+      <div class="cards three">
+        <div class="card">
+          <h3>Then grant 3 permissions</h3>
+          <p>Microphone, Accessibility, Input Monitoring. Hold <kbd>&#8997;</kbd> Right Option and talk. A bare <code class="mono">swift run</code> binary can't request the mic, which is why <code class="mono">make-app.sh</code> builds a real bundle.</p>
+        </div>
+        <div class="card">
+          <h3>Optional signing cert</h3>
+          <p><code class="mono">./Scripts/make-signing-cert.sh</code> once creates a self-signed identity so the designated requirement is cryptographically anchored, not just identifier-pinned.</p>
+        </div>
+        <div class="card">
+          <h3>Update in place</h3>
+          <p><code class="mono">ditto Murmur.app ~/Applications/Murmur.app</code>. Deleting and re-copying can drop the TCC entry and force an unnecessary re-grant.</p>
+        </div>
+      </div>
+
+      <div class="code">
+        <div class="bar"><i></i><i></i><i></i><span>Why it can fail (and the workaround)</span></div>
+        <pre><span class="c"># If your Command Line Tools hit the known duplicate-SwiftBridging</span>
+<span class="c"># modulemap bug, every Foundation import fails to compile. The fallback</span>
+<span class="c"># builds without SwiftPM via a VFS overlay; no system files are touched.</span>
+<span class="p">$</span> ./Scripts/build-swiftc.sh     <span class="c"># make-app.sh falls back to this automatically</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="config">
+  <div class="wrap">
+    <p class="eyebrow">Settings</p>
+    <h2>Everything is a field in one window</h2>
+    <p class="section-lede">
+      Menu-bar icon &rarr; Settings. Values persist to <code class="mono">config.json</code>
+      and a partial or older file still loads, with absent keys falling back to defaults.
+    </p>
+    <div class="table-card">
+      <table>
+        <thead><tr><th>Setting</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td>STT backend</td><td><code>whisperCpp</code> (local) or <code>openAICompatible</code> (remote)</td></tr>
+          <tr><td>STT base URL</td><td><code>http://127.0.0.1:8126</code></td></tr>
+          <tr><td>STT model</td><td><code>whisper-large-v3-turbo</code></td></tr>
+          <tr><td>Language</td><td><code>auto</code>, or an ISO code such as <code>en</code></td></tr>
+          <tr><td>LLM cleanup</td><td>disabled; base URL <code>http://localhost:11434/v1</code>, model <code>qwen2.5:7b</code></td></tr>
+          <tr><td>Cleanup timeout</td><td><code>8.0</code> s, then the raw transcript is used</td></tr>
+          <tr><td>Hotkey</td><td>Right Option (keycode 61), no extra modifiers</td></tr>
+          <tr><td>Activation</td><td><code>hold</code> to talk, or <code>toggle</code> for tap start/stop</td></tr>
+          <tr><td>Insertion</td><td><code>paste</code>, with clipboard restore on</td></tr>
+          <tr><td>Whisper port</td><td><code>8126</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="color:var(--dim);font-size:14px;margin-top:18px">
+      The LLM URL is the source of truth: editing it flips the Provider picker to the matching
+      entry rather than the other way around.
+    </p>
+  </div>
+</section>
+
+<section id="arch">
+  <div class="wrap">
+    <p class="eyebrow">Architecture</p>
+    <h2>A thin Swift orchestrator over HTTP</h2>
+    <p class="section-lede">
+      Nothing heavy is linked into the app. Model work happens behind two HTTP boundaries, which
+      is exactly what makes the local-to-remote move a settings change.
+    </p>
+    <div class="arch">
+      <div class="arch-row"><span class="k">Input</span><span class="v"><b>HotkeyManager + HotkeyDetector</b> - a CGEventTap on a dedicated thread drives a pure state machine (edges, auto-repeat debounce, missed-release resync).</span></div>
+      <div class="arch-row"><span class="k">Capture</span><span class="v"><b>AudioRecorder</b> - AVAudioEngine per session, resampled to 16 kHz mono, wrapped as WAV by WavEncoder.</span></div>
+      <div class="arch-arrow">&darr;</div>
+      <div class="arch-row"><span class="k">Transcribe</span><span class="v"><b>TranscriptionBackend</b> protocol - WhisperCppBackend locally, OpenAIAudioBackend remotely.</span></div>
+      <div class="arch-row"><span class="k">Cleanup</span><span class="v"><b>CleanupService</b> - OpenAI-compatible chat completions, editable prompt, timeout to raw text.</span></div>
+      <div class="arch-arrow">&darr;</div>
+      <div class="arch-row"><span class="k">Output</span><span class="v"><b>TextInserter</b> - Accessibility-driven paste or keystroke synthesis into the frontmost app.</span></div>
+      <div class="arch-row"><span class="k">Process mgmt</span><span class="v"><b>ServerSupervisor</b> - launches, restarts and reaps the bundled whisper-server; no-op in remote mode.</span></div>
+      <div class="arch-row"><span class="k">State</span><span class="v"><b>DictationState</b> - the legal transition graph, unit-tested, shared by the HUD and the controller.</span></div>
+    </div>
+    <p class="quote">
+      Design constraint worth naming: the core dictation path must never block on the optional
+      LLM step. Cleanup is a nicety, so it gets a timeout and a fallback.
+    </p>
+    <div class="stats">
+      <div class="stat"><div class="v">27</div><div class="k">Swift source files</div></div>
+      <div class="stat"><div class="v">14</div><div class="k">test suites</div></div>
+      <div class="stat"><div class="v">&lt;1000</div><div class="k">lines per file</div></div>
+      <div class="stat"><div class="v">31</div><div class="k">commits to date</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="privacy">
+  <div class="wrap">
+    <p class="eyebrow">Privacy</p>
+    <h2>What leaves your machine</h2>
+    <div class="cards three">
+      <div class="card"><h3>In local mode, nothing</h3><p>Audio goes to a process you launched, on a loopback address. No account, no update server, no analytics.</p></div>
+      <div class="card"><h3>In remote mode, you choose</h3><p>Only the host you configure sees audio or text. That host is a plain URL field, and it's your own machine in the intended setup.</p></div>
+      <div class="card"><h3>The clipboard</h3><p>Paste insertion touches your clipboard and then restores the previous contents, unless you turn the restore off.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <div class="wrap">
+    <p class="eyebrow">Roadmap</p>
+    <h2>Where it is</h2>
+    <div class="roadmap">
+      <div class="ms">
+        <div class="when">M1 &middot; done</div>
+        <div><span class="tag done">Shipped</span><h3>Core loop</h3>
+          <ul><li>Menu-bar app, hold-to-talk hotkey, AVAudioEngine capture</li>
+          <li>whisper.cpp backend, local server supervision, cursor insertion</li></ul></div>
+      </div>
+      <div class="ms">
+        <div class="when">M2 &middot; done</div>
+        <div><span class="tag done">Shipped</span><h3>Backends and settings</h3>
+          <ul><li>Backend protocol plus an OpenAI-compatible remote path (the Spark route)</li>
+          <li>Settings window, persisted config, permission onboarding</li></ul></div>
+      </div>
+      <div class="ms">
+        <div class="when">M3 &middot; done</div>
+        <div><span class="tag done">Shipped</span><h3>Optional LLM cleanup</h3>
+          <ul><li>Chat-completions pass with an editable prompt and a hard timeout</li></ul></div>
+      </div>
+      <div class="ms">
+        <div class="when">M4 &middot; now</div>
+        <div><span class="tag now">In progress</span><h3>Polish</h3>
+          <ul><li>Done: animated HUD per state, app icon, menu-bar status glyph with colored state dot, stable code signing</li>
+          <li>Remaining: in-app model download, richer error toasts, optional silence trimming or VAD for lower latency</li></ul></div>
+      </div>
+      <div class="ms">
+        <div class="when">Later</div>
+        <div><span class="tag now">Open</span><h3>Known gaps</h3>
+          <ul><li>Toggle mode has no maximum recording duration, so a forgotten session keeps accumulating samples</li>
+          <li>Bare-modifier hotkeys fire on either side of the key pair</li>
+          <li>No notarized distribution yet, so first launch needs a right-click open</li></ul></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <span>Murmur - local-first dictation for macOS. MIT &copy; Javier.</span>
+    <div class="foot-links">
+      <a href="https://github.com/jvr0x/murmur">Repository</a>
+      <a href="https://github.com/jvr0x/murmur/blob/main/README.md">README</a>
+      <a href="https://github.com/jvr0x/murmur/blob/main/PLANNING.md">Planning</a>
+      <a href="https://github.com/jvr0x/murmur/issues">Issues</a>
+    </div>
+  </div>
+</footer>
+
+<!-- jx:footer -->
+<footer class="jx-footer">
+  <div class="jx-footer-links">
+    <a href="https://x.com/jvr0x" rel="noopener">x.com/jvr0x</a>
+    <a href="https://github.com/jvr0x" rel="noopener">github</a>
+    <a href="https://huggingface.co/jvr0x" rel="noopener">huggingface</a>
+    <a href="https://agicheckpoint.com" rel="noopener">agicheckpoint.com</a>
+    <a href="https://ko-fi.com/jvr0x" rel="noopener">ko-fi</a>
+  </div>
+  <p class="jx-sig">Javier &bull; priv/acc | Local AI, security, privacy &amp; crypto</p>
+</footer>
+<!-- /jx:footer -->
+
+<script src="assets/app.js"></script>
+</body>
+</html>
