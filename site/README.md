@@ -4,8 +4,7 @@ Source for the GitHub Pages site at <https://jvr0x.com/murmur/>.
 
 Plain HTML, CSS and a few lines of vanilla JS. No framework, no bundler, no build step,
 and no third-party scripts or analytics. The only outside resources come from the shared
-jvr0x.com chrome: `/assets/chrome.css` (which imports JetBrains Mono from Google Fonts) and
-the AGI Checkpoint signup iframe in the shared footer.
+jvr0x.com chrome: `/assets/chrome.css`, which imports JetBrains Mono from Google Fonts.
 
 ## Files
 
