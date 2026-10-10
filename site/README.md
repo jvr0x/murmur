@@ -36,8 +36,9 @@ then republish:
 ```
 
 The script resets `gh-pages` to the contents of `site/`, adds a `.nojekyll` marker so Pages
-does not run Jekyll over the output, and renames this file to `BUILD.md`. Pages rebuilds on
-each push; watch the build with:
+does not run Jekyll over the output, and renames this file to `BUILD.md`. To check the script
+itself without publishing, run `./Scripts/tests/test-publish-site.sh` (it publishes into a
+throwaway local repo, never the real `origin`). Pages rebuilds on each push; watch the build with:
 
 ```sh
 gh api repos/jvr0x/murmur/pages/builds/latest --jq '.status'
